@@ -8,3 +8,20 @@ You can pull the files to your compputer and run them however for the simulation
 
 here is the requiered steps to install the virtual environment and install the requierments.
 
+Step 1.
+Using the terminal select the desired folder
+
+Step 2. Create a vritual environment in the folder
+```python
+Python3 -m venv venv
+```
+
+Step 3. Activate the vritual environment:
+```python 
+. venv/bin/activate
+```
+
+step 4. Install the requierments.
+```python
+pip install -r requirement.txt
+```
