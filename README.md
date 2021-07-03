@@ -1,8 +1,7 @@
 # RI Microsimulator July 2021
 This Repository contains the following sub-projects
-1. Microsimulation Data
-2. Microsimulaiton Files
-3. Dashboard Files
+1. Microsimulaiton Files
+2. Dashboard Files
 
 You can pull the files to your compputer and run them however for the simulation and dashboard you will need to isntall a local virtual enivronment in python. 
 
@@ -31,3 +30,6 @@ step 5. Install the ipykernel
 conda install -c anaconda ipykernel
 python -m ipykernel install --user --name=venv
 ```
+
+# If you would like to install the dashboard on a website follow the following instructions in the following guide
+https://www.youtube.com/watch?v=WOWVat5BgM4
