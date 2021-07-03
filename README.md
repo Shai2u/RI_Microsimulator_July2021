@@ -25,3 +25,9 @@ step 4. Install the requierments.
 ```python
 pip install -r requirement.txt
 ```
+
+step 5. Install the ipykernel
+```python
+conda install -c anaconda ipykernel
+python -m ipykernel install --user --name=venv
+```
