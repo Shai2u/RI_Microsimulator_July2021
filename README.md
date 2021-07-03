@@ -33,3 +33,9 @@ python -m ipykernel install --user --name=venv
 
 # If you would like to install the dashboard on a website follow the following instructions in the following guide
 https://www.youtube.com/watch?v=WOWVat5BgM4
+
+## Microsimulation Wiki page
+https://github.com/Shai2u/RI_Microsimulator_July2021/wiki
+
+## Microsimulation also in Colab
+https://colab.research.google.com/drive/1YWgPleRSFMU0Jw2GtSkOPF7IKgyK9G4O?usp=sharing
