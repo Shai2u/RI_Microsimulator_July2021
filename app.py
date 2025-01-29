@@ -1009,7 +1009,7 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
 
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
+server = app.server
 
 bgcolor = "#f3f3f1"  # mapbox light map land color
 
