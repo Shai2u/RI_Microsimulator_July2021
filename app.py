@@ -76,17 +76,19 @@ class bldFunctionality():
         sy = pd.to_datetime(str(year_)+"-1-1")
         eoy = pd.to_datetime(str(year_+1)+"-1-1")  # end of year
 
-        sample_ds = self.ds.query(
-            f'move_in<="{sy}" and move_out>="{eoy}"').copy()
+        filter_ = (self.ds['move_in'] <= sy) & (self.ds['move_out'] > eoy)
+        sample_ds = self.ds[filter_].copy()
         return sample_ds
 
     def filterDisplacedByFullYearDate(self, year_):
-        ds = self.ds.copy()
         sy = pd.to_datetime(str(year_)+"-1-1")
         eoy = pd.to_datetime(str(year_+1)+"-1-1")  # end of year
 
-        step_1 = self.ds.query(f'move_in<="{sy}" and move_out>"{sy}"').copy()
-        sample_ds = step_1.query(f'move_out<"{eoy}"').copy()
+        filter_ = (self.ds['move_in'] <= sy) & (self.ds['move_out'] > eoy)
+
+        step_1 = self.ds[filter_].copy()
+        filter_ = step_1['move_out'] < eoy
+        sample_ds = step_1[filter_].copy()
         return sample_ds
 
     def getReportDummies(self, year):
@@ -529,7 +531,7 @@ class sim_plot:
             ds_moveout['income']
         ds_moveout['stay_go'] = 'out'
         ds_fyear['stay_go'] = 'stay'
-        ds_fyear.loc[ds_fyear['move_in'].dt.year == ye_, 'stay_go'] = 'new'
+        ds_fyear.loc[pd.to_datetime(ds_fyear['move_in']).dt.year == ye_, 'stay_go'] = 'new'
         all_y = pd.concat([ds_fyear, ds_moveout])
         all_y['income_group'] = all_y['income'].apply(
             incomeClass.getIncomeCategory)
@@ -1756,7 +1758,4 @@ def display_page(pathname):
 
 # Run app and display result inline in the notebook
 if __name__ == '__main__':
-    # app.run_server(debug=True, host='127.0.0.1',
-    # suppress_callback_exceptions=True)
-    app.run_server(debug=False, dev_tools_ui=False,
-                   dev_tools_props_check=False, host='127.0.0.1')
+    app.run_server(debug=False)
