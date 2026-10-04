@@ -1,5 +1,6 @@
 # Direct dependencies only (pip resolves the rest). Tested on Python 3.13.
 dash==4.4.1
+flask-compress==1.25
 dash-bootstrap-components==2.0.4
 plotly==7.1.0
 pandas==3.0.6

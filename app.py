@@ -719,7 +719,7 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
     return fig_map
 
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP],
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], compress=True,
                 title='Roosevelt Island Microsimulator',
                 meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1'}])
 server = app.server
@@ -1129,6 +1129,11 @@ def setSecurityHeaders(response):
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     return response
 
+
+# Build the opening view (year 2000, whole island) at startup so the first
+# visitor after a restart does not wait for it.
+dashboardFigures('None', YEAR_DEFAULT, 'ri', 'aib', 'am')
+mapFigure(YEAR_DEFAULT, 'aib', 'All of The Island')
 
 if __name__ == '__main__':
     app.run(debug=False)
