@@ -1,0 +1,68 @@
+/* Loaded automatically by Dash (every .css file in assets/). */
+:root {
+  --ri-bg: #eef1f4;
+  --ri-surface: #ffffff;
+  --ri-text: #1d2733;
+  --ri-muted: #66717d;
+  --ri-affordable: #0f4275;   /* 'Affordable' colour from jan_7_color_labels.xlsx */
+  --ri-market: #7a0a26;       /* 'Market' colour from the same palette */
+  --ri-radius: 12px;
+  /* Dash 4 component accent (slider, dropdown highlight) */
+  --Dash-Fill-Interactive-Strong: var(--ri-affordable);
+}
+
+body {
+  background: var(--ri-bg);
+  color: var(--ri-text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.ri-page { background: var(--ri-bg); }
+
+.ri-card {
+  border: 0;
+  border-radius: var(--ri-radius);
+  background: var(--ri-surface);
+  box-shadow: 0 1px 2px rgba(16, 32, 48, .06), 0 4px 16px rgba(16, 32, 48, .05);
+}
+
+/* Title bar */
+.ri-brand {
+  font-size: .75rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ri-muted);
+  font-weight: 600;
+}
+.ri-scope { font-weight: 650; color: var(--ri-affordable); }
+
+/* KPI strip */
+.ri-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: .5rem 1rem;
+  width: 100%;
+}
+.ri-kpi-label {
+  font-size: .7rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ri-muted);
+}
+.ri-kpi-value {
+  font-size: 1.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* Control labels */
+.ri-card .form-label {
+  font-size: .7rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* 3D scene: tinted placeholder while ArcGIS loads */
+.ri-scene { background: linear-gradient(160deg, #dfe6ee, #f3f5f8); border-radius: 8px; }

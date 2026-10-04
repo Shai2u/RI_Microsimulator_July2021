@@ -591,11 +591,16 @@ def createAffordableInduvidualBldgs(title_, maxY, yloc, year_):
 
 
 def getCurrentScope(r):
+    """KPI strip for the households in scope."""
     if r.empty:
-        return 'No households in scope for this year'
-    return (f"Buildings {r['Building Name'].nunique()} · Households {len(r):,} · "
-            f"Tenant cycles {r['Tenant Cycle'].mean():.1f} · Mean age {r['raw age'].mean():.1f} · "
-            f"Mean income ${r['income'].mean():,.0f}")
+        return html.Div('No households in scope for this year', className='text-muted')
+    kpis = [('Buildings', f"{r['Building Name'].nunique()}"),
+            ('Households', f'{len(r):,}'),
+            ('Tenant cycles', f"{r['Tenant Cycle'].mean():.1f}"),
+            ('Mean age', f"{r['raw age'].mean():.1f}"),
+            ('Mean income', f"${r['income'].mean():,.0f}")]
+    return html.Div([html.Div([html.Div(label, className='ri-kpi-label'), html.Div(value, className='ri-kpi-value')])
+                     for label, value in kpis], className='ri-kpis')
 
 
 SCENE_3D_URL = 'https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4'
@@ -739,12 +744,12 @@ def labeled(label, control):
 
 def card(children, fill=False, **kwargs):
     """fill=True stretches the card to its row height (for side-by-side cards)."""
-    return dbc.Card(dbc.CardBody(children, className='p-2'),
-                    className='shadow-sm' + (' h-100' if fill else ''), **kwargs)
+    return dbc.Card(dbc.CardBody(children, className='p-3'),
+                    className='ri-card' + (' h-100' if fill else ''), **kwargs)
 
 
 def scene3D(id_, height):
-    return html.Iframe(id=id_, src=SCENE_3D_URL, title='3D model of Roosevelt Island',
+    return html.Iframe(id=id_, src=SCENE_3D_URL, title='3D model of Roosevelt Island', className='ri-scene',
                        style={'width': '100%', 'height': height, 'border': 0})
 
 
@@ -794,16 +799,16 @@ def yearSlider(id_):
 
 def headerRow(title_id, summary_id):
     return dbc.Row([
-        dbc.Col(card([html.Div('Roosevelt Island Microsimulator', className='small text-muted'),
-                      html.H5(f'All of The Island: {YEAR_DEFAULT}', id=title_id, className='m-0')],
+        dbc.Col(card([html.Div('Roosevelt Island Microsimulator', className='ri-brand'),
+                      html.H4(f'All of The Island: {YEAR_DEFAULT}', id=title_id, className='ri-scope m-0')],
                      fill=True), md=4),
         dbc.Col(card(html.Div(id=summary_id, className='h-100 d-flex align-items-center'), fill=True), md=8),
-    ], className='g-2 mb-2')
+    ], className='g-3 mb-3')
 
 
-touchScreen = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', children=[
+touchScreen = dbc.Container(fluid=True, className='py-3 ri-page min-vh-100', children=[
     headerRow('graph_ri', 'executive_sum_text'),
-    dbc.Row(className='g-2', children=[
+    dbc.Row(className='g-3', children=[
         # Map: first on phones, second column on wide screens
         dbc.Col(card([
             dbc.Row([dbc.Col(labeled('Scale', scaleDropDownMenu), sm=6),
@@ -816,8 +821,8 @@ touchScreen = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', ch
                 dbc.Col(labeled('Year', yearSlider('year-slider')), md=8),
                 dbc.Col(labeled('Time series', timeDropDownMenu), md=4),
             ], className='g-2 align-items-end')),
-            html.Div(card(graph('time-graph', TIME_HEIGHT)), className='mt-2'),
-            dbc.Row(className='g-2 mt-0', children=[
+            html.Div(card(graph('time-graph', TIME_HEIGHT)), className='mt-3'),
+            dbc.Row(className='g-3 mt-0', children=[
                 dbc.Col(card(graph('sunBurst-graph', DETAIL_HEIGHT), fill=True), lg=6),
                 dbc.Col(card([labeled('Detail chart', contextualDropMenu),
                               graph('contextual-graph', DETAIL_HEIGHT)], fill=True), lg=6),
@@ -830,11 +835,11 @@ touchScreen = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', ch
 ])
 
 # Projection pages: mirror the touch screen selection (see shared state below).
-projDash = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', children=[
+projDash = dbc.Container(fluid=True, className='py-3 ri-page min-vh-100', children=[
     headerRow('bldYearProj', 'executiveSumTextProj'),
     card(yearSlider('yearSliderProj')),
-    html.Div(card(graph('time-graphProjDash', '42vh')), className='mt-2'),
-    dbc.Row(className='g-2 mt-0', children=[
+    html.Div(card(graph('time-graphProjDash', '42vh')), className='mt-3'),
+    dbc.Row(className='g-3 mt-0', children=[
         dbc.Col(card(graph('sunBurst-graphProjDash', '38vh')), md=6),
         dbc.Col(card(graph('contextual-graphProDash', '38vh')), md=6),
     ]),
@@ -842,8 +847,8 @@ projDash = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', child
     dcc.Interval(id='interval-component_DashProj', interval=1500),
 ])
 
-proj3D = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', children=[
-    dbc.Row(className='g-2', children=[
+proj3D = dbc.Container(fluid=True, className='py-3 ri-page min-vh-100', children=[
+    dbc.Row(className='g-3', children=[
         dbc.Col(card(scene3D('ifame-cellProj3D', '94vh')), md=6),
         dbc.Col(card(graph('map-graphProj3D', '94vh')), md=6),
     ]),
