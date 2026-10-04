@@ -1,16 +1,18 @@
 import colorsys
+import json
+import os
 import re
 from pathlib import Path
 
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, State
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import json
 
 DATA_DIR = Path(__file__).resolve().parent / 'assets' / 'legacy_resources'
 HSV_RE = re.compile(r'hsv\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)')
@@ -66,8 +68,6 @@ incomeRangeSmall = incomeSmallCat['income max'].values.tolist() + [0]
 incomeLabelSmall = incomeSmallCat.index.tolist()
 incomeRangeSmall.reverse()
 incomeLabelSmall.reverse()
-years_list = np.arange(1970, 2070, 15)
-yearListSlider = dict(zip(years_list, (str(year_) for year_ in years_list)))
 fontSize = 24
 yearListSlider = {
     1970: {'label': '1970', 'style': {'font-size': f'{fontSize}px'}},
@@ -98,32 +98,13 @@ class bldFunctionality():
         return sample_ds
 
     def filterDisplacedByFullYearDate(self, year_):
+        """Households that moved out during the given year."""
         sy = pd.to_datetime(str(year_)+"-1-1")
         eoy = pd.to_datetime(str(year_+1)+"-1-1")  # end of year
 
-        filter_ = (self.ds['move_in'] <= sy) & (self.ds['move_out'] > eoy)
+        filter_ = (self.ds['move_out'] >= sy) & (self.ds['move_out'] < eoy)
+        return self.ds[filter_].copy()
 
-        step_1 = self.ds[filter_].copy()
-        filter_ = step_1['move_out'] < eoy
-        sample_ds = step_1[filter_].copy()
-        return sample_ds
-
-    def getReportDummies(self, year):
-        yearDS = self.ds[['birth_date', 'Group', 'Building Name', 'annual_expenses_burden',
-                          'income', 'agentID', 'tenant_cycle', 'death_age', 'entrance_age', 'ApartmentType']].copy()
-        yearDS['raw age'] = year - yearDS['birth_date'].dt.year
-        yearDS['get_mid'] = yearDS['raw age'].apply(ageClass.getGroupCategory)
-        yearDS['age_group'] = yearDS['get_mid'].apply(
-            lambda x: ageClass.mid2Group[x])
-        yearDS['annual_expenses_burden'] = yearDS['annual_expenses_burden'].fillna(
-            0)
-        yearDS['income_group'] = yearDS['income'].apply(
-            incomeClass.getIncomeCategory)
-        yearDS['year'] = year
-        yearDS_Dummy = pd.get_dummies(yearDS, columns=[
-                                      'age_group', 'income_group', 'ApartmentType']).drop(columns=['birth_date', 'get_mid'])
-        yearDS_Dummy.reset_index(inplace=True, drop=True)
-        return yearDS_Dummy
 
     def getAffordableMarketPerYear3(self, ye_, gr=group_color_dict, gr2=censusIncomeDict):
         '''Recives Results, Year and Color File'''
@@ -167,68 +148,9 @@ class bldFunctionality():
                               'tenant_cycle': 'Tenant Cycle', 'ap_index': 'Door Number'}, inplace=True)
         return res_2
 
-    @staticmethod
-    def addPercentToReport1(rp):
-        cols_1 = rp.columns[(rp.columns.str.contains("age_group") | rp.columns.str.contains("income_group") |
-                             rp.columns.str.contains("ApartmentType_"))].tolist()
-        newCols1 = [item+"_%" for item in cols_1]
-        for i in range(len(cols_1)):
-            sCol = cols_1[i]
-            nCol = newCols1[i]
-            total = rp.loc[0, 'agentID']
-            colValue = rp.loc[0, sCol]
-            calcRatio = colValue/total
-            rp.loc[0, nCol] = round(np.mean(calcRatio), 2)
-        return rp
 
-    @staticmethod
-    def dummyReportGroupByBldg(dr):
-        demo_eco_cols = dr.columns[(dr.columns.str.contains("age_group") | dr.columns.str.contains("income_group") |
-                                    dr.columns.str.contains("ApartmentType_"))].tolist()
-        basce_cols_dict = {'Group': 'first', 'raw age': lambda x: round(np.mean(x), 1), 'income': lambda x: round(np.mean(x), 1), 'annual_expenses_burden': lambda x: round(np.mean(
-            x), 1), 'agentID': 'count', 'tenant_cycle': lambda x: round(np.mean(x), 3), 'death_age': lambda x: round(np.mean(x), 1), 'entrance_age': lambda x: round(np.mean(x), 1), 'year': 'first'}
-        demo_eco_cols_dict = {item: 'sum' for item in demo_eco_cols}
-        base_demo_eco_dict = basce_cols_dict
-        base_demo_eco_dict.update(demo_eco_cols_dict)
-        # Function for each type of aggregation (No Aggregation, group or building)
-        # Case og Building
-        report_1 = dr.groupby('Building Name').agg(
-            base_demo_eco_dict).reset_index()
-        return report_1
 
-    def rerturnDemoEcoReportForYear(self, year_, gropBy_):
-        '''
-        groupBy_ can be: 'Group,Building,None'
-        year...
-        '''
-        if (gropBy_ == 'Building'):
-            fullYearDS = bldDataset(self.filterByFullYear(year_).copy())
-            if (len(fullYearDS.ds)) > 0:
-                dummyReport = fullYearDS.getReportDummies(year_)
-                report = bldFunctionality.addPercentToReport1(
-                    bldFunctionality.dummyReportGroupByBldg(dummyReport)).copy()
-            else:
-                return None
-        else:
-            return None
-        return report
 
-    def yearlyReportBldgDemoEco(self):
-        report_bld_years = pd.DataFrame()  # new Year
-        years = np.arange(1975, 2071, 1)
-        for ye_ in years:
-            if np.mod(ye_, 10) == 0:
-                print('year:', ye_)
-            report = self.rerturnDemoEcoReportForYear(ye_, 'Building')
-            if report is not None:
-                if ye_ == 1975:
-                    report_bld_years = report.copy()
-                else:
-                    report_bld_years = pd.concat(
-                        [report_bld_years, report.copy()])
-            else:
-                continue
-        return report_bld_years
 
 
 class simDataset(bldFunctionality):
@@ -266,12 +188,6 @@ class simDataset(bldFunctionality):
         return bldg_year_ds
 
 
-class bldDataset(bldFunctionality):
-    # class bldDataset:
-    def __init__(self, ds):
-        bldFunctionality.__init__(self)
-        self.ds = ds
-        self.bldgs_list = ds['Building Name'].unique().tolist()
 
 
 class ageClass:
@@ -304,8 +220,6 @@ class ageClass:
         else:
             return 30
 
-
-# In[7]:
 
 
 class incomeClass:
@@ -341,10 +255,6 @@ class incomeClass:
                   '$25K-34K': 30000,
                   '$15K-24K': 20000,
                   '<$15K': 7500}
-
-
-catIncome = list(censusIncomeDict.keys())
-catIncome.reverse()
 
 
 class sim_plot:
@@ -560,152 +470,12 @@ class sim_plot:
         all_y['year'] = ye_
         return all_y
 
-    def wireSpecificBuildingGraph(data, rental_list, coop_list, marketColor, affordColor, title_, year_):
-        data = data.query(f'year<={year_}').copy()
-        # buildingAggregation
-        g1 = data.groupby(['year', 'Building Name', 'ApartmentType'])
-        g2 = g1.agg({'agentID': 'count'}).reset_index()
-        # building unique List
-        bld_list = data['Building Name'].unique()
-        ds_list = [g2[g2['Building Name'] == bld] for bld in bld_list]
 
-        for i in range(len(rental_list)):
-            ds_list[i].reset_index(inplace=True, drop=True)
-            rental_list[i] = rental_list[i].query(f'year<={year_}').copy()
-            rental_list[i].reset_index(inplace=True, drop=True)
-            coop_list[i] = coop_list[i].query(f'year<={year_}').copy()
-            coop_list[i].reset_index(inplace=True, drop=True)
 
-        bld_list[2] = 'Island House'
-
-        fig = go.Figure()
-        for i in range(4):
-            if (i == 0):
-                line_coop = dict(color=marketColor, width=2)
-                line_rent = dict(color=affordColor, width=2)
-            elif (i == 1):
-                line_coop = dict(color=marketColor, width=4, dash='dash')
-                line_rent = dict(color=affordColor, width=4, dash='dash')
-            elif (i == 2):
-                line_coop = dict(color=marketColor, width=2, dash='dot')
-                line_rent = dict(color=affordColor, width=2, dash='dot')
-            else:
-                line_coop = dict(color=marketColor, width=3, dash='dashdot')
-                line_rent = dict(color=affordColor, width=3, dash='dashdot')
-            rentType = ' - affordable units'
-            # Percent Option
-            max_c = coop_list[i]['agentID'].max()
-            max_r = rental_list[i]['agentID'].max()
-            percent_ = coop_list[i]['percent_']
-            fig.add_trace(go.Scatter(x=coop_list[i]['year'], y=(coop_list[i]['agentID']),
-                                     mode='lines',
-                                     name=bld_list[i] + ' - market units',
-                                     line=line_coop,
-                                     legendgroup=str(i),
-                                     hovertemplate='<br><b>Market Units</b>:%{y:}<br>' +
-                                     '<b>Percent:</b> %{text} %',
-                                     text=['{:.1f}'.format(p*100, 1)
-                                           for p in percent_]
-                                     ))
-            percent_ = rental_list[i]['percent_']
-            fig.add_trace(go.Scatter(x=rental_list[i]['year'], y=(rental_list[i]['agentID']),
-                                     mode='lines',
-                                     name=bld_list[i] + rentType,
-                                     line=line_rent,
-                                     legendgroup=str(i),
-                                     hovertemplate='<br><b>Affordable Units</b> : %{y:}<br>' +
-                                     '<b>Percent : </b>%{text} %',
-                                     text=['{:.1f}'.format(p*100, 1)
-                                           for p in percent_],
-                                     ))
-
-        fig.update_layout(title=title_)
-        fig.update_xaxes(range=[1976, 2076], showline=True,
-                         linecolor='rgb(150,150,150)')
-        fig.update_yaxes(range=[0, 1100], showline=True,
-                         linecolor='rgb(150,150,150)')
-        fig.update_layout(width=sim_plot.tl_width, height=sim_plot.tl_height2, plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=0.8, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
-                          margin=dict(l=50, r=50, t=100, b=50), showlegend=False,font=dict(size=sim_plot.textSize_))
-        return fig
-
-    @staticmethod
-    def wireGeneralGraph(aw, mC, aC):
-        fig = go.Figure()
-        line_coop = dict(color=mC, width=3)
-        line_rent = dict(color=aC, width=3)
-        percent_c = aw['Market Percent']
-        percent_r = aw['Affordable Percent']
-        fig.add_trace(go.Scatter(x=aw['year'], y=(aw['Market Units']),
-                                 mode='lines',
-                                 name='Market units',
-                                 line=line_coop,
-                                 hovertemplate='<br><b>Market Units</b>:%{y:}<br>' +
-                                 '<b>Percent:</b> %{text} %',
-                                 text=['{:.1f}'.format(p*100, 1)
-                                       for p in percent_c]
-                                 ))
-
-        fig.add_trace(go.Scatter(x=aw['year'], y=(aw['Affordable Units']),
-                                 mode='lines',
-                                 name='Affordable units',
-                                 line=line_rent,
-                                 hovertemplate='<br><b>Affordable Units</b> : %{y:}<br>' +
-                                 '<b>Percent : </b>%{text} %',
-                                 text=['{:.1f}'.format(p*100, 1)
-                                       for p in percent_r],
-                                 ))
-
-        fig.update_xaxes(range=[1976, 2076], showline=True,
-                         linecolor='rgb(150,150,150)')
-        fig.update_yaxes(range=[0, 2250], showline=True,
-                         linecolor='rgb(150,150,150)')
-        fig.update_layout(width=sim_plot.tl_width, height=sim_plot.tl_height2, plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=0.4, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
-                          margin=dict(l=50, r=50, t=100, b=50), title='Privatization process conversion of affordable units to market rate',font=dict(size=sim_plot.textSize_))
-        return fig
-
-    @staticmethod
-    def allGeneralGraph(isam, mC, aC):
-        fig = go.Figure()
-        line_coop = dict(color=mC, width=3)
-        line_rent = dict(color=aC, width=3)
-        percent_c = isam['Market Percent']
-        percent_r = isam['Affordable Percent']
-        fig.add_trace(go.Scatter(x=isam['year'], y=(isam['Market Units']),
-                                 mode='lines',
-                                 name='Market units',
-                                 line=line_coop,
-                                 hovertemplate='<br><b>Market Units</b>:%{y:.0f}<br>' +
-                                 '<b>Percent:</b> %{text} %',
-                                 text=['{:.1f}'.format(p*100, 1)
-                                       for p in percent_c]
-                                 ))
-
-        fig.add_trace(go.Scatter(x=isam['year'], y=(isam['Affordable Units']),
-                                 mode='lines',
-                                 name='Affordable units',
-                                 line=line_rent,
-                                 hovertemplate='<br><b>Affordable Units</b> : %{y:.0f}<br>' +
-                                 '<b>Percent : </b>%{text} %',
-                                 text=['{:.1f}'.format(p*100, 1)
-                                       for p in percent_r],
-                                 ))
-
-        fig.update_layout(
-            title='Privatization process conversion of affordable units to market rate')
-
-        fig.update_layout(width=sim_plot.tl_width, height=sim_plot.tl_height2, plot_bgcolor='rgba(255,255,255,0)', hoverlabel_align="auto", hovermode="x unified", legend=dict(yanchor="top", y=0.8, xanchor="left", x=0.01),
-                          margin=dict(l=50, r=50, t=100, b=50),font=dict(size=sim_plot.textSize_))
-        fig.update_xaxes(range=[1976, 2076], showline=True,
-                         linecolor='rgb(150,150,150)')
-        #                 showgrid=True, gridcolor='rgb(150,150,150)')
-        fig.update_yaxes(range=[0, 5400], showline=True,
-                         linecolor='rgb(150,150,150)')
-
-        return fig
 
     def AgentCycle(r, year_, title_):
-        affordCycles = r.query('ap_class=="Affordable"')['Tenant Cycle']
-        marketCycles = r.query('ap_class=="Market"')['Tenant Cycle']
+        affordCycles = r.loc[r['ap_class'] == 'Affordable', 'Tenant Cycle']
+        marketCycles = r.loc[r['ap_class'] == 'Market', 'Tenant Cycle']
         histogramFig = go.Figure()
         histogramFig.add_trace(go.Histogram(
             x=affordCycles, name='Affordable Units'))
@@ -733,8 +503,6 @@ resultsAll1 = simDataset(resData, jsonBldgs)
 allByYear = sim_plot.getAgentsByRangeAllGroupInOut2(
     resultsAll1, range(1976, 2080))
 
-
-# In[12]:
 
 
 allByYear['age_group_2'] = pd.cut(
@@ -782,9 +550,9 @@ def addAffordableStatisticsByBuildings(r):
     return r_dummy_agg
 
 
-allAffordableByBldg = addAffordableStatisticsByBuildings(allByYear)
-NotWireAffordalbe = addAffordableStatistics(allByYearNotWire)
-AllAffordable = addAffordableStatistics(allByYear)
+allAffordableByBldg = addAffordableStatisticsByBuildings(allByYearStay)
+NotWireAffordable = addAffordableStatistics(allByYearNotWire)
+AllAffordable = addAffordableStatistics(allByYearStay)
 WireAffordable = addAffordableStatistics(allByYearWire)
 
 
@@ -855,10 +623,12 @@ def baseFigForAffordableTSAddTrace(fig, r, colx, coly, line_style, hovertext_, n
     return fig
 
 
-def createAffordableInduvidualBldgs(title_, maxY, yloc, query_):
+def createAffordableInduvidualBldgs(title_, maxY, yloc, year_):
+    """Per-building market/affordable time series for the WIRE buildings."""
     fig1 = baseFigForAffordableTS(title_, maxY, yloc)
-    r1 = allAffordableByBldg.query(query_)
-    BldgsList = r1.query(query_)['Building Name'].unique().tolist()
+    r1 = allAffordableByBldg[(allAffordableByBldg['Group'] == 'WIRE')
+                             & (allAffordableByBldg['year'] < year_)]
+    BldgsList = r1['Building Name'].unique().tolist()
     lineDashl = ['Line', 'dash', 'dot', 'dashdot']
     for i in range(len(BldgsList)):
         bldg = BldgsList[i]
@@ -914,9 +684,12 @@ def getCurrentScope(r):
     return rtText
 
 
+SCENE_3D_URL = 'https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4'
+
+
 def getIframeURLfor3D(zoomto='All of The Island'):
     buildingsIframeDict = {
-        'base': 'https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4',
+        'base': SCENE_3D_URL,
         'Roosevelt Landings': '&viewpoint=cam:-8232294.14564431,4976971.55542625,188.707,102100;53.45,62.097',
         'Manhattan park': '&viewpoint=cam:-8231926.10204526,4978087.15207409,101.822,102100;149.074,73.52',
         'The Octagon': '&viewpoint=cam:-8231799.25126456,4978433.16302919,116.932,102100;110.548,74.849',
@@ -932,25 +705,27 @@ def getIframeURLfor3D(zoomto='All of The Island'):
         'Wire': '&viewpoint=cam:-8232455.27430039,4976611.10725427,942.614,102100;34.366,38.656',
         'All of The Island': '&viewpoint=cam:-8233187.87589454,4975509.19937045,682.802,102100;32.257,68.071',
         'Northtown & Southtown': '&viewpoint=cam:-8233187.87589454,4975509.19937045,682.802,102100;32.257,68.071'}
-    return f"{buildingsIframeDict['base']}{buildingsIframeDict[zoomto]}"
+    viewpoint = buildingsIframeDict.get(zoomto, buildingsIframeDict['All of The Island'])
+    return f"{buildingsIframeDict['base']}{viewpoint}"
+
+
+def boundsCenter(gdf):
+    minx, miny, maxx, maxy = gdf.total_bounds
+    return (minx + maxx) / 2, (miny + maxy) / 2
 
 
 def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
 
     if zoomto == 'Wire':
-        focus = rib[rib['Group'].isin(['WIRE'])].copy()
-        lon_ = focus.geometry.boundary.centroid.x.values[0]
-        lat_ = focus.geometry.boundary.centroid.y.values[0]
+        lon_, lat_ = boundsCenter(rib[rib['Group'] == 'WIRE'])
         zoom_ = 16
-    elif zoomto in ['All of The Island', 'Northtown & Southtown']:
+    elif zoomto in rib['Buildings'].values:
+        lon_, lat_ = boundsCenter(rib[rib['Buildings'] == zoomto])
+        zoom_ = 17
+    else:  # 'All of The Island', 'Northtown & Southtown' and anything unknown
         zoom_ = 14.5
         lat_ = 40.7624
         lon_ = -73.949
-    else:
-        focus = rib[rib['Buildings'].isin([zoomto])].copy()
-        lon_ = focus.geometry.boundary.centroid.x.values[0]
-        lat_ = focus.geometry.boundary.centroid.y.values[0]
-        zoom_ = 17
     rib_filter = rMap[rMap['cnstrct_yr'] < value_].copy()
     # r2 = r.copy()
     mapAggData = r.groupby('Building Name').agg({'Age Group': lambda x: x.value_counts().index[0], 'Income': lambda x: x.value_counts().index[0], 'group_name': lambda x: x.value_counts(
@@ -1028,16 +803,9 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 
-bgcolor = "#f3f3f1"  # mapbox light map land color
-
-bldListOrder = ['Roosevelt Landings', 'Roosevelt Landings', 'Rivercross',
-                'Rivercross', 'Island House', 'Island House', 'Westview', 'Westview']
-
 valYear = 2000
-generalCopy = AllAffordable.copy()
-generalCopy = generalCopy.query(f"year<={valYear}")
 figAll = affordabilityTimeSeriesAgregattedGraph(
-    aw=generalCopy, mC=marketColor, aC=affordColor, title_='All of the Island')
+    aw=AllAffordable[AllAffordable['year'] <= valYear], mC=marketColor, aC=affordColor, title_='All of the Island')
 
 cellTimeFigure = dcc.Graph(id='time-graph', figure=figAll)
 cellTimeFigureProjDash = dcc.Graph(id='time-graphProjDash', figure=figAll)
@@ -1132,7 +900,7 @@ sunBurstFigure = dbc.Card([dcc.Graph(id='sunBurst-graph', figure=figSunBurst)])
 sunBurstFigureProjDash = dbc.Card(
     [dcc.Graph(id='sunBurst-graphProjDash', figure=figSunBurst)])
 
-touchScreen = html.Div([dcc.Store(id='nothingObj'),
+touchScreen = html.Div([
                         html.Table(
     [
         html.Tr([
@@ -1149,7 +917,7 @@ touchScreen = html.Div([dcc.Store(id='nothingObj'),
                 html.Td(
                     [
                         dbc.Card([Menu3d, (html.Iframe(id='ifame-cell', height=f"{sim_plot.mapHeight1+40}px", width=f"{sim_plot.mapWidth}px",
-                                                       src="https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4"))], body=True)
+                                                       src=SCENE_3D_URL))], body=True)
                     ], rowSpan='3'),
                 html.Td([col1], rowSpan='3', style={
                     'border-style': 'solid', 'border-width': '0px', 'width': '400px'}),
@@ -1227,6 +995,7 @@ projDash = html.Div([
                'border-spacing': '0', 'width': '100%'}
 
     ),
+    dcc.Store(id='projDash-state'),
     dcc.Interval(
         id='interval-component_DashProj',
         interval=1*1500,  # in milliseconds
@@ -1242,12 +1011,12 @@ proj3D = html.Div([html.Table(
                 html.Td(
                     [
                         dbc.Card([(html.Iframe(id='ifame-cellProj3D', height="1080px", width="580px",
-                                               src="https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4"))], body=True)
+                                               src=SCENE_3D_URL))], body=True)
                     ]),
                 html.Td([dbc.Card(dcc.Graph(id='map-graphProj3D', figure=fig_map), body=True)], style={
                     'border-style': 'solid', 'border-width': '0px', "height":"1080px", 'width': '580px'}),
             ]
-        ), dcc.Interval(
+        ), dcc.Store(id='proj3D-state'), dcc.Interval(
             id='interval-component_Dash3D',
             interval=1*1500,  # in milliseconds
             n_intervals=0
@@ -1258,8 +1027,8 @@ proj3D = html.Div([html.Table(
 )
 ])
 
-Only3D = html.Div([html.Iframe(id='ifame-cellOnly3D', height="1200px", width="3500px",
-                                              src="https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4"),dcc.Interval(
+Only3D = html.Div([dcc.Store(id='only3D-state'), html.Iframe(id='ifame-cellOnly3D', height="1200px", width="3500px",
+                                              src=SCENE_3D_URL),dcc.Interval(
             id='interval_Only3D',
             interval=1*1500,  # in milliseconds
             n_intervals=0)
@@ -1273,506 +1042,255 @@ app.layout = html.Div([
 
 ])
 
-@app.callback([Output('bldYearProj', 'children'), Output('time-graphProjDash', 'figure'), Output('sunBurst-graphProjDash', 'figure'), Output('contextual-graphProDash', 'figure'), Output('executiveSumTextProj', 'children'), Output('yearSliderProj', 'value')],
-              Input('interval-component_DashProj', 'n_intervals'))
-def updateProjDash(n):
-    #dbCSV = pd.read_csv('db.csv')
-    with open('assets/db.json') as json_file:
-        dbCSV = json.load(json_file)
-    BldName = dbCSV['BldName'][0]
-    year_ = dbCSV['yearValue'][0]
-    res_ = dbCSV['resolutionValue'][0]
-    context_ = dbCSV['contextValue'][0]
-    timeFigCategory_ = dbCSV['timeFigCategory'][0]
-    # bldgYear = dbCSV['bldYearProj_'].values[0]
-    # executiveText = dbCSV['executiveText'].values[0]
-    #print('bldName', BldName)
-    [bldgYear, res, timeFig, sunBurst, figContextual, executiveText] = TimeSunBurstContextFigure(
-        BldName, year_, res_, context_, timeFigCategory_)
-    timeFig.update_layout(width=1200, height=500,font=dict(size=24))
-    sunBurst.update_layout(width=600, height=500)
-    figContextual.update_layout(width=600, height=500,font=dict(size=24))
-    return [bldgYear, timeFig, sunBurst, figContextual, executiveText, year_]
-
-#interval-component_Only3D
 
 
-@app.callback([ Output('ifame-cellOnly3D', 'src')], Input('interval_Only3D', 'n_intervals'))
-def updateOnly3D_1(n):
-    #toDB = pd.read_csv('db_maps.csv')
-    with open('assets/db_maps.json') as json_file:
-        data = json.load(json_file)
-    resolution_ = data['Resolution_'][0]
-    menu_3d = data['menu_3d'][0]
-    if (menu_3d == 'Yes3D'):
-        url3D = getIframeURLfor3D(zoomto=resolution_)
-    else:
-        url3D = "https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4"
-    return ([url3D])
-
-@app.callback([Output('map-graphProj3D', 'figure'), Output('ifame-cellProj3D', 'src')], Input('interval-component_Dash3D', 'n_intervals'))
-def updateProj3D(n):
-    #toDB = pd.read_csv('db_maps.csv')
-    with open('assets/db_maps.json') as json_file:
-        data = json.load(json_file)
-    yearValue = data['yearValue'][0]
-    mapCat = data['mapCat'][0]
-    resolution_ = data['Resolution_'][0]
-    menu_3d = data['menu_3d'][0]
-    r = resultsAll1.getAffordableMarketPerYear3(yearValue)
-    mapFigure = updateMapYear1(
-        int(yearValue), rib.copy(), r, mapCat, zoomto=resolution_)
-    mapFigure.update_layout(autosize=True, height=1080, width=580)
-    if (menu_3d == 'Yes3D'):
-        url3D = getIframeURLfor3D(zoomto=resolution_)
-    else:
-        url3D = "https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4"
-    return ([mapFigure, url3D])
+# ---------------------------------------------------------------------------
+# Input validation: every value arriving from the browser is checked against
+# a known list before it is used, so crafted requests cannot inject anything.
+# ---------------------------------------------------------------------------
+YEAR_MIN, YEAR_MAX, YEAR_DEFAULT = 1976, 2080, 2000
+RESOLUTIONS = ('ind', 'wireb', 'wire', 'NotWire', 'ri')
+CONTEXTS = ('aib', 'income', 'incomeCensus', 'age', 'cycle', 'treemap')
+TIME_CATEGORIES = ('am', 'leave', 'life', 'ie', 'ageg', 'ig')
+MAP_CATEGORIES = ('aib', 'income', 'meanIncome', 'age',
+                  'meanAge', 'cycle', 'apNum', 'afPercent')
+MENU_3D = ('No3D', 'Yes3D')
+BUILDINGS = frozenset(rib['Buildings'])
+ZOOM_TARGETS = BUILDINGS | {'All of The Island', 'Wire', 'Northtown & Southtown'}
 
 
-@ app.callback(
-    [Output('map-graph', 'figure'), Output('ifame-cell', 'src')],
-    [Input('year-slider', 'value'), Input('mapcolor-menu', 'value'), Input('graph_ri', 'children'), Input('menu3D', 'value')])
-def update_map2(yearValue, cat, titleText, menu_3d):
-    r = resultsAll1.getAffordableMarketPerYear3(yearValue)
-    titleText2 = titleText.split(':')[0]
-    mapFigure = updateMapYear1(
-        int(yearValue), rib.copy(), r, cat, zoomto=titleText2)
-
-    if (menu_3d == 'Yes3D'):
-        url3D = getIframeURLfor3D(zoomto=titleText2)
-    else:
-        url3D = "https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4"
-
-    #toDB = pd.DataFrame({'yearValue': [yearValue], 'mapCat': [
-    #                    cat], 'Resolution_': [titleText2], 'menu_3d': [menu_3d]})
-    #toDB.to_csv('db_maps.csv')
-    data = {'yearValue': [yearValue], 'mapCat': [
-        cat], 'Resolution_': [titleText2], 'menu_3d': [menu_3d]}
-    with open('assets/db_maps.json', 'w') as outfile:
-        json.dump(data, outfile)
-    return ([mapFigure, url3D])
+def cleanChoice(value, allowed, default):
+    return value if value in allowed else default
 
 
-# @ app.callback(
-#     [Output('nothingObj', 'data')],
-#     [Input('downloadB', 'n_clicks')],
-#     [State('map-graph', 'figure'), State('time-graph', 'figure'), State('sunBurst-graph', 'figure'), State('contextual-graph', 'figure'), State('figure_text', 'value')])
-# def update_output(n_clicks, mapData, graphTime, sunburstGraph, contextGraph, fileText):
-#     if n_clicks != None:
-#         now = datetime.datetime.now()
-#         current_time = now.strftime("%Y%m%d_%H%M")
-#         fig = go.Figure(data=mapData)
-#         fig.write_html(f'exported/mapFig_{fileText}_{current_time}.html')
-#         fig = go.Figure(data=graphTime)
-#         fig.write_html(f'exported/timeFig_{fileText}_{current_time}.html')
-#         fig = go.Figure(data=sunburstGraph)
-#         fig.write_html(f'exported/sunburstFig_{fileText}_{current_time}.html')
-#         fig = go.Figure(data=contextGraph)
-#         fig.write_html(f'exported/contextFig_{fileText}_{current_time}.html')
-#     return ['']
+def cleanYear(value):
+    try:
+        return min(max(int(value), YEAR_MIN), YEAR_MAX)
+    except (TypeError, ValueError):
+        return YEAR_DEFAULT
 
 
-@ app.callback(
-    [Output('graph_ri', 'children'), Output('scale-observation', 'value'), Output('time-graph', 'figure'),
-     Output('sunBurst-graph', 'figure'), Output('contextual-graph', 'figure'), Output('executive_sum_text', 'children')],
-    [Input('map-graph', 'clickData'), Input('year-slider', 'value'), Input('scale-observation', 'value'), Input('contextual-menu', 'value'), Input('time-menu', 'value')])
-def update_graph_ri(clickData, yearValue, resolutionValue, contextValue, timeFigCategory):
-    # executiveDefaultText = "In Score: Buildings: Households in Scope: Mean Age: Mean Income:"
-    # executiveText = executiveDefaultText
-    # #
-    if (type(clickData) is not dict):
-        BldName = 'None'
-    else:
-        BldName = clickData['points'][0]['customdata'][0]
-    return TimeSunBurstContextFigure(BldName, yearValue, resolutionValue, contextValue, timeFigCategory)
+def cleanBuilding(value):
+    return value if value in BUILDINGS else 'None'
 
-    # return clickData['points']
-# Update the index
+
+# ---------------------------------------------------------------------------
+# Shared state between the touch screen and the projection pages
+# (/ProjDash, /Proj3D, /Only3D poll it). Kept outside the public assets folder
+# and written atomically so a reader never sees a half-written file.
+# ---------------------------------------------------------------------------
+STATE_DIR = Path(__file__).resolve().parent / 'state'
+DASH_STATE_FILE = STATE_DIR / 'dashboard.json'
+MAP_STATE_FILE = STATE_DIR / 'map.json'
+DEFAULT_DASH_STATE = {'BldName': 'None', 'yearValue': YEAR_DEFAULT, 'resolutionValue': 'ri',
+                      'contextValue': 'aib', 'timeFigCategory': 'am'}
+DEFAULT_MAP_STATE = {'yearValue': YEAR_DEFAULT, 'mapCat': 'aib',
+                     'Resolution_': 'All of The Island', 'menu_3d': 'No3D'}
+
+
+def writeState(path, data):
+    STATE_DIR.mkdir(exist_ok=True)
+    tmp = path.with_name(f'{path.name}.{os.getpid()}.tmp')
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, path)
+
+
+def readState(path, default):
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return dict(default)
+    return {key: data.get(key, value) for key, value in default.items()}
+
+
+# ---------------------------------------------------------------------------
+# Dashboard figures for a scope (island / WIRE / Northtown & Southtown / building)
+# ---------------------------------------------------------------------------
+def resolveScope(BldName, resolutionValue):
+    """Returns (scope, header label). A building is only used in 'ind' mode;
+    'ind' without a clicked building behaves like 'wireb'."""
+    if resolutionValue == 'ri':
+        return 'ri', 'All of The Island'
+    if resolutionValue == 'NotWire':
+        return 'NotWire', 'Northtown & Southtown'
+    if resolutionValue == 'ind' and BldName != 'None':
+        return 'building', BldName
+    return 'wire', 'Wire'
+
+
+def scopeMask(df, scope, BldName):
+    if scope == 'ri':
+        return pd.Series(True, index=df.index)
+    if scope == 'NotWire':
+        return df['Group'] != 'WIRE'
+    if scope == 'wire':
+        return df['Group'] == 'WIRE'
+    return df['Building Name'] == BldName
+
+
+def timeFigure(scope, BldName, resolutionValue, timeFigCategory, yearValue):
+    if timeFigCategory == 'am':
+        if scope == 'ri':
+            return affordabilityTimeSeriesAgregattedGraph(
+                aw=AllAffordable[AllAffordable['year'] <= yearValue], mC=marketColor, aC=affordColor, title_='All of the Island')
+        if scope == 'NotWire':
+            return affordabilityTimeSeriesAgregattedGraph(
+                aw=NotWireAffordable[NotWireAffordable['year'] <= yearValue], mC=marketColor, aC=affordColor, title_='North Town and South Town')
+        if scope == 'wire' and resolutionValue == 'wire':
+            return affordabilityTimeSeriesAgregattedGraph(
+                aw=WireAffordable[WireAffordable['year'] <= yearValue], mC=marketColor, aC=affordColor, title_='Wire')
+        if scope == 'wire':
+            return createAffordableInduvidualBldgs('Wire', 1500, 0.9, yearValue)
+        r = allAffordableByBldg[(allAffordableByBldg['Building Name'] == BldName)
+                                & (allAffordableByBldg['year'] <= yearValue)].reset_index(drop=True)
+        return affordabilityTimeSeriesAgregattedGraph(aw=r, mC=marketColor, aC=affordColor, title_=BldName)
+
+    scopeName = {'ri': 'all of the Island', 'NotWire': 'Northtown Southtown Buildings',
+                 'wire': 'Wire Buildings'}.get(scope, BldName)
+    if timeFigCategory == 'leave':
+        r = allByYear[(allByYear['year'] <= yearValue) & scopeMask(allByYear, scope, BldName)]
+        return sim_plot.reasulToLeaveByTime(r, f'Reason for leaving for {scopeName}')
+    r = allByYearStay[(allByYearStay['year'] <= yearValue) & scopeMask(allByYearStay, scope, BldName)]
+    if timeFigCategory == 'life':
+        return sim_plot.averageAgeByTime(r, f'Average Age and Life Expectancy for {scopeName}')
+    if timeFigCategory == 'ie':
+        return sim_plot.incomeBurdenTime(r, f'Income and burden for {scopeName}')
+    if timeFigCategory == 'ageg':
+        return sim_plot.ageGroupTimeGraph(r, f'Age Groups for {scopeName}')
+    return sim_plot.incomeGroupTimeGraph(r, f'Income Groups for {scopeName}')
+
+
+def contextualFigure(scope, data, contextValue, yearValue):
+    label = {'ri': 'RI', 'NotWire': 'Northtown Southtown', 'wire': 'Wire'}.get(scope, 'Building')
+    if contextValue == 'aib':
+        return sim_plot.bubbleAgeIncomeClass(data, yearValue, label)
+    if contextValue == 'income':
+        return sim_plot.incomeByGroupFigure(data, yearValue, label)
+    if contextValue == 'incomeCensus':
+        return sim_plot.incomeByGroupFigureCensus(data, yearValue, label)
+    if contextValue == 'age':
+        return sim_plot.ageByGroupFigure(data, yearValue, label)
+    if contextValue == 'cycle':
+        return sim_plot.AgentCycle(data, yearValue, label)
+    title_ = f'Affordability and Income Agent Scale {yearValue} {label}'
+    if scope == 'building':
+        return sim_plot.treeMapBuilding(data, title_)
+    return sim_plot.treeMapIsland(data, title_)
 
 
 def TimeSunBurstContextFigure(BldName, yearValue, resolutionValue, contextValue, timeFigCategory):
+    """Builds header, time series, sunburst, contextual figure and summary text
+    for the current selection, and publishes it for the projection pages."""
+    yearValue = cleanYear(yearValue)
+    resolutionValue = cleanChoice(resolutionValue, RESOLUTIONS, 'ri')
+    contextValue = cleanChoice(contextValue, CONTEXTS, 'aib')
+    timeFigCategory = cleanChoice(timeFigCategory, TIME_CATEGORIES, 'am')
+    BldName = cleanBuilding(BldName)
+
+    scope, scopeLabel = resolveScope(BldName, resolutionValue)
     currentData_ = resultsAll1.getAffordableMarketPerYear3(yearValue)
-    currentData_.loc[currentData_['Building Name'] ==
-                     'island house', 'Building Name'] = 'Island House'
-    if (BldName == 'None'):
-        # print_in_display('Nothing to Print')
-        if (resolutionValue == 'ri'):
-            if (timeFigCategory == 'am'):
-                generalCopy = AllAffordable.copy()
-                generalCopy = generalCopy.query(f"year<={yearValue}")
-                fig = affordabilityTimeSeriesAgregattedGraph(
-                    aw=generalCopy, mC=marketColor, aC=affordColor, title_='All of the Island')
-            elif (timeFigCategory == 'leave'):
-                re = allByYear.query(f"year<={yearValue}").copy()
-                fig = sim_plot.reasulToLeaveByTime(
-                    re, 'Reason for leaving for all of the Island')
-            elif (timeFigCategory == 'life'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.averageAgeByTime(
-                    r, "Average Age and Life Expectancy for all of the Island")
-            elif (timeFigCategory == 'ie'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.incomeBurdenTime(
-                    r, "Income and burden for all of the Island")
-            elif (timeFigCategory == 'ageg'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.ageGroupTimeGraph(
-                    r, "Age Groups for all of the Island")
-            else:
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.incomeGroupTimeGraph(
-                    r, "Income And Burden for all of the Island")
-            sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(
-                currentData_.copy(), yearValue)
-            if (contextValue == 'aib'):
-                figContextual = sim_plot.bubbleAgeIncomeClass(
-                    currentData_.copy(), yearValue, 'RI')
-            elif(contextValue == 'income'):
-                figContextual = sim_plot.incomeByGroupFigure(
-                    currentData_.copy(), yearValue, 'RI')
-            elif(contextValue == 'incomeCensus'):
-                figContextual = sim_plot.incomeByGroupFigureCensus(
-                    currentData_.copy(), yearValue, 'RI')
-            elif(contextValue == 'age'):
-                figContextual = sim_plot.ageByGroupFigure(
-                    currentData_.copy(), yearValue, 'RI')
-            elif(contextValue == 'cycle'):
-                figContextual = sim_plot.AgentCycle(
-                    currentData_.copy(), yearValue, 'RI')
-            else:
-                figContextual = sim_plot.treeMapIsland(
-                    currentData_, f'Affordability and Income Agent Scale {yearValue} RI')
-            executiveText = getCurrentScope(currentData_)
+    scopeData = currentData_[scopeMask(currentData_, scope, BldName)].copy()
 
-            # toDB = pd.DataFrame({'BldName': [BldName], 'bldYearProj_': [f'All of The Island: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-            #    resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]})
-            # toDB.to_csv('db.csv')
-            data = {'BldName': [BldName], 'bldYearProj_': [f'All of The Island: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-                resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]}
-            with open('assets/db.json', 'w') as outfile:
-                json.dump(data, outfile)
-            return ([f'All of The Island: {yearValue}', resolutionValue, fig, sunBurstFig, figContextual, executiveText])
-        else:  # (resolutionValue in ['wire','wireb','NotWire']):
-            if resolutionValue == 'NotWire':
-                bldScope = 'Northtown & Southtown'
-            else:
-                bldScope = 'Wire'
-            if (timeFigCategory == 'am'):
-                if resolutionValue == 'wire':
-                    rg = WireAffordable.copy()
-                    rg = rg.query(f"year<={yearValue}")
-                    title_ = 'Wire'
-                    fig = affordabilityTimeSeriesAgregattedGraph(
-                        aw=rg, mC=marketColor, aC=affordColor, title_=title_)
-                elif resolutionValue == 'NotWire':
-                    rg = NotWireAffordalbe.copy()
-                    rg = rg.query(f"year<={yearValue}")
-                    title_ = 'North Town and South Town'
-                    fig = affordabilityTimeSeriesAgregattedGraph(
-                        aw=rg, mC=marketColor, aC=affordColor, title_=title_)
-                else:
-                    fig = createAffordableInduvidualBldgs(
-                        'Wire', 1500, 0.9, (f'Group=="WIRE" and year<{yearValue}'))
-            elif (timeFigCategory in ['leave', 'life', 'ie', 'ageg', 'ig']):
-                if resolutionValue == 'NotWire':
-                    r = allByYearStay.query(f"year<={yearValue}").copy()
-                    r = r.query('Group!="WIRE"').copy()
-                    re = allByYear.query(f"year<={yearValue}").copy()
-                    re = re.query('Group!="WIRE"').copy()
-                    groupBuildings = 'Northtown Southtown'
-                else:
-                    r = allByYearStay.query(f"year<={yearValue}").copy()
-                    r = r.query('Group=="WIRE"').copy()
-                    re = allByYear.query(f"year<={yearValue}").copy()
-                    re = re.query('Group=="WIRE"').copy()
-                    groupBuildings = 'Wire'
+    header = f'{scopeLabel}: {yearValue}'
+    fig = timeFigure(scope, BldName, resolutionValue, timeFigCategory, yearValue)
+    sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(scopeData, yearValue)
+    figContextual = contextualFigure(scope, scopeData, contextValue, yearValue)
+    executiveText = getCurrentScope(scopeData)
 
-                if (timeFigCategory == 'leave'):
-
-                    fig = sim_plot.reasulToLeaveByTime(
-                        re, f'Reason for leaving for {groupBuildings} Buidlings')
-                elif (timeFigCategory == 'life'):
-
-                    fig = sim_plot.averageAgeByTime(
-                        r, f"Average Age and Life Expectancy for {groupBuildings} Buidlings")
-                elif (timeFigCategory == 'ie'):
-                    fig = sim_plot.incomeBurdenTime(
-                        r, f"Income and burden for {groupBuildings} Buidlings")
-                elif (timeFigCategory == 'ageg'):
-                    fig = sim_plot.ageGroupTimeGraph(
-                        r, f"Age Groups for {groupBuildings} Buidlings")
-                else:
-
-                    fig = sim_plot.incomeGroupTimeGraph(
-                        r, f"Income And Burden for {groupBuildings} Buidlings")
-            if resolutionValue == 'NotWire':
-                groupBuildings = 'Northtown Southtown'
-                currentDataWire = currentData_.query('Group!="WIRE"').copy()
-            else:
-                groupBuildings = 'Wire'
-                currentDataWire = currentData_.query('Group=="WIRE"').copy()
-            sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(
-                currentDataWire, yearValue)
-            if (contextValue == 'aib'):
-                figContextual = sim_plot.bubbleAgeIncomeClass(
-                    currentDataWire.copy(), yearValue, groupBuildings)
-            elif(contextValue == 'income'):
-                figContextual = sim_plot.incomeByGroupFigure(
-                    currentDataWire.copy(), yearValue, groupBuildings)
-            elif(contextValue == 'incomeCensus'):
-                figContextual = sim_plot.incomeByGroupFigureCensus(
-                    currentDataWire.copy(), yearValue, groupBuildings)
-            elif(contextValue == 'age'):
-                figContextual = sim_plot.ageByGroupFigure(
-                    currentDataWire.copy(), yearValue, groupBuildings)
-            elif(contextValue == 'cycle'):
-                figContextual = sim_plot.AgentCycle(
-                    currentDataWire.copy(), yearValue, groupBuildings)
-            else:
-                figContextual = sim_plot.treeMapIsland(currentDataWire.copy(
-                ), f'Affordability and Income Agent Scale {yearValue} {groupBuildings}')
-            executiveText = getCurrentScope(currentDataWire)
-
-            # toDB = pd.DataFrame({'BldName': [BldName], 'bldYearProj_': [f'{bldScope}: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-            #    resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]})
-            # toDB.to_csv('db.csv')
-            data = {'BldName': [BldName], 'bldYearProj_': [f'{bldScope}: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-                resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]}
-            with open('assets/db.json', 'w') as outfile:
-                json.dump(data, outfile)
-            return ([f'{bldScope}: {yearValue}', resolutionValue, fig, sunBurstFig, figContextual, executiveText])
-    else:
-        if (resolutionValue == 'ri'):
-
-            if (timeFigCategory == 'am'):
-                generalCopy = AllAffordable.copy()
-                generalCopy = generalCopy.query(f"year<={yearValue}")
-                fig = affordabilityTimeSeriesAgregattedGraph(
-                    aw=generalCopy, mC=marketColor, aC=affordColor, title_='All of the Island')
-            elif (timeFigCategory == 'leave'):
-                re = allByYear.query(f"year<={yearValue}").copy()
-                fig = sim_plot.reasulToLeaveByTime(
-                    re, 'Reason for leaving for all of the Island')
-            elif (timeFigCategory == 'life'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.averageAgeByTime(
-                    r, "Average Age and Life Expectancy for all of the Island")
-            elif (timeFigCategory == 'ie'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.incomeBurdenTime(
-                    r, "Income and burden for all of the Island")
-            elif (timeFigCategory == 'ageg'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.ageGroupTimeGraph(
-                    r, "Age Groups for all of the Island")
-            else:
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                fig = sim_plot.incomeGroupTimeGraph(
-                    r, "Income And Burden for all of the Island")
-
-            sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(
-                currentData_.copy(), yearValue)
-            if (contextValue == 'aib'):
-                figContextual = sim_plot.bubbleAgeIncomeClass(
-                    currentData_, yearValue, 'RI')
-            elif(contextValue == 'income'):
-                figContextual = sim_plot.incomeByGroupFigure(
-                    currentData_, yearValue, 'RI')
-            elif(contextValue == 'incomeCensus'):
-                figContextual = sim_plot.incomeByGroupFigureCensus(
-                    currentData_, yearValue, 'RI')
-            elif(contextValue == 'age'):
-                figContextual = sim_plot.ageByGroupFigure(
-                    currentData_, yearValue, 'RI')
-            elif(contextValue == 'cycle'):
-                figContextual = sim_plot.AgentCycle(
-                    currentData_.copy(), yearValue, 'RI')
-            else:
-                figContextual = sim_plot.treeMapIsland(
-                    currentData_.copy(), f'Affordability and Income Agent Scale {yearValue} RI')
-
-            executiveText = getCurrentScope(currentData_)
-
-            # toDB = pd.DataFrame({'BldName': [BldName], 'bldYearProj_': [f'All of The Island: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-            #    resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]})
-            # toDB.to_csv('db.csv')
-            data = {'BldName': ['None'], 'bldYearProj_': [f'All of The Island: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-                resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]}
-            with open('assets/db.json', 'w') as outfile:
-                json.dump(data, outfile)
-            return ([f'All of The Island: {yearValue}', resolutionValue, fig, sunBurstFig, figContextual, executiveText])
-        elif (resolutionValue in ['wire', 'NotWire', 'wireb']):
-            if resolutionValue == 'NotWire':
-                bldScope = 'Northtown & Southtown'
-            else:
-                bldScope = 'Wire'
-            if (timeFigCategory == 'am'):
-                if resolutionValue == 'wire':
-                    rg = WireAffordable.copy()
-                    rg = rg.query(f"year<={yearValue}")
-                    title_ = 'Wire'
-                    fig = affordabilityTimeSeriesAgregattedGraph(
-                        aw=rg, mC=marketColor, aC=affordColor, title_=title_)
-                elif resolutionValue == 'NotWire':
-                    rg = NotWireAffordalbe.copy()
-                    rg = rg.query(f"year<={yearValue}")
-                    title_ = 'North Town and South Town'
-                    fig = affordabilityTimeSeriesAgregattedGraph(
-                        aw=rg, mC=marketColor, aC=affordColor, title_=title_)
-                else:
-                    fig = createAffordableInduvidualBldgs(
-                        'Wire', 1500, 0.9, (f'Group=="WIRE" and year<{yearValue}'))
-
-            elif (timeFigCategory in ['leave', 'life', 'ie', 'ageg', 'ig']):
-                if resolutionValue == 'NotWire':
-                    r = allByYearStay.query(f"year<={yearValue}").copy()
-                    r = r.query('Group!="WIRE"').copy()
-                    re = allByYear.query('Group!="WIRE"').copy()
-                    re = re.query(f"year<={yearValue}").copy()
-                    groupBuildings = 'Northtown Southtown'
-                else:
-                    r = allByYearStay.query(f"year<={yearValue}").copy()
-                    r = r.query('Group=="WIRE"').copy()
-                    re = allByYear.query('Group=="WIRE"').copy()
-                    re = re.query(f"year<={yearValue}").copy()
-                    groupBuildings = 'Wire'
-                if (timeFigCategory == 'leave'):
-                    fig = sim_plot.reasulToLeaveByTime(
-                        re, f'Reason for leaving for {groupBuildings} Buidlings')
-                elif (timeFigCategory == 'life'):
-                    fig = sim_plot.averageAgeByTime(
-                        r, f"Average Age and Life Expectancy for {groupBuildings} Buidlings")
-                elif (timeFigCategory == 'ie'):
-
-                    fig = sim_plot.incomeBurdenTime(
-                        r, f"Income and burden for {groupBuildings} Buidlings")
-                elif (timeFigCategory == 'ageg'):
-
-                    fig = sim_plot.ageGroupTimeGraph(
-                        r, f"Age Groups for {groupBuildings} Buidlings")
-                else:
-                    fig = sim_plot.incomeGroupTimeGraph(
-                        r, f"Income And Burden for {groupBuildings} Buidlings")
-            if resolutionValue == 'NotWire':
-                groupBuildings = 'Northtown Southtown'
-                currentDataWire = currentData_.query('Group!="WIRE"').copy()
-            else:
-                groupBuildings = 'Wire'
-                currentDataWire = currentData_.query('Group=="WIRE"').copy()
-            sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(
-                currentDataWire, yearValue)
-            if (contextValue == 'aib'):
-                figContextual = sim_plot.bubbleAgeIncomeClass(
-                    currentDataWire, yearValue, groupBuildings)
-            elif(contextValue == 'income'):
-                figContextual = sim_plot.incomeByGroupFigure(
-                    currentDataWire, yearValue, groupBuildings)
-            elif(contextValue == 'incomeCensus'):
-                figContextual = sim_plot.incomeByGroupFigureCensus(
-                    currentDataWire, yearValue, groupBuildings)
-            elif(contextValue == 'age'):
-                figContextual = sim_plot.ageByGroupFigure(
-                    currentDataWire, yearValue, groupBuildings)
-            elif(contextValue == 'cycle'):
-                figContextual = sim_plot.AgentCycle(
-                    currentDataWire, yearValue, groupBuildings)
-            else:
-                figContextual = sim_plot.treeMapIsland(
-                    currentDataWire, f'Affordability and Income Agent Scale {yearValue} {groupBuildings}')
-            executiveText = getCurrentScope(currentDataWire)
-
-            # toDB = pd.DataFrame({'BldName': [BldName], 'bldYearProj_': [f'{bldScope}: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-            #     resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]})
-            # toDB.to_csv('db.csv')
-            data = {'BldName': ['None'], 'bldYearProj_': [f'{bldScope}: {yearValue}'], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-                resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]}
-            with open('assets/db.json', 'w') as outfile:
-                json.dump(data, outfile)
-            return ([f'{bldScope}: {yearValue}', resolutionValue, fig, sunBurstFig, figContextual, executiveText])
-        else:
-            if (timeFigCategory == 'am'):
-                r = allAffordableByBldg[allAffordableByBldg['Building Name'] == f'{BldName}'].copy(
-                )
-                r = r.query(f"year<={yearValue}").copy()
-                r.reset_index(inplace=True, drop=True)
-                fig = affordabilityTimeSeriesAgregattedGraph(
-                    aw=r, mC=marketColor, aC=affordColor, title_=BldName)
-            elif (timeFigCategory == 'leave'):
-                re = allByYear.query(f"year<={yearValue}").copy()
-                re = re.query(f'`Building Name`=="{BldName}"').copy()
-                fig = sim_plot.reasulToLeaveByTime(
-                    re, f'Reason for leaving for {BldName}')
-            elif (timeFigCategory == 'life'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                r = r.query(f'`Building Name`=="{BldName}"').copy()
-                fig = sim_plot.averageAgeByTime(
-                    r, f"Average Age and Life Expectancy for {BldName}")
-            elif (timeFigCategory == 'ie'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                r = r.query(f'`Building Name`=="{BldName}"').copy()
-                fig = sim_plot.incomeBurdenTime(
-                    r, f"Income and burden for {BldName}")
-            elif (timeFigCategory == 'ageg'):
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                r = r.query(f'`Building Name`=="{BldName}"').copy()
-                fig = sim_plot.ageGroupTimeGraph(
-                    r, f"Age Groups for {BldName}")
-            else:
-                r = allByYearStay.query(f"year<={yearValue}").copy()
-                r = r.query(f'`Building Name`=="{BldName}"').copy()
-                fig = sim_plot.incomeGroupTimeGraph(
-                    r, f"Income And Burden for {BldName}")
-            currentDataBldg = currentData_.query(
-                f'`Building Name`=="{BldName}"').copy()
-            sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(
-                currentDataBldg, yearValue)
-            if (contextValue == 'aib'):
-                figContextual = sim_plot.bubbleAgeIncomeClass(
-                    currentDataBldg, yearValue, 'Building')
-            elif(contextValue == 'income'):
-                figContextual = sim_plot.incomeByGroupFigure(
-                    currentDataBldg, yearValue, 'Building')
-            elif(contextValue == 'incomeCensus'):
-                figContextual = sim_plot.incomeByGroupFigureCensus(
-                    currentDataBldg, yearValue, 'Building')
-            elif(contextValue == 'age'):
-                figContextual = sim_plot.ageByGroupFigure(
-                    currentDataBldg, yearValue, 'Building')
-            elif(contextValue == 'cycle'):
-                figContextual = sim_plot.AgentCycle(
-                    currentDataBldg, yearValue, 'Building')
-            else:
-                figContextual = sim_plot.treeMapBuilding(
-                    currentDataBldg, f'Affordability and Income Agent Scale {yearValue} Building')
-            executiveText = getCurrentScope(currentDataBldg)
-            # toDB = pd.DataFrame({'BldName': [BldName], 'bldYearProj_': [BldName+": " + str(yearValue)], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-            #     resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]})
-            # toDB.to_csv('db.csv')
-            data = {'BldName': [BldName], 'bldYearProj_': [BldName+": " + str(yearValue)], 'executiveText': [executiveText], 'yearValue': [yearValue], 'resolutionValue': [
-                resolutionValue], 'contextValue': [contextValue], 'timeFigCategory': [timeFigCategory]}
-            with open('assets/db.json', 'w') as outfile:
-                json.dump(data, outfile)
-            return ([BldName+": " + str(yearValue), resolutionValue, fig, sunBurstFig, figContextual, executiveText])
+    writeState(DASH_STATE_FILE, {
+        'BldName': BldName if scope == 'building' else 'None', 'yearValue': yearValue,
+        'resolutionValue': resolutionValue, 'contextValue': contextValue, 'timeFigCategory': timeFigCategory})
+    return [header, fig, sunBurstFig, figContextual, executiveText]
 
 
-@ app.callback(dash.dependencies.Output('page-content', 'children'),
-               [dash.dependencies.Input('url', 'pathname')])
+def scene3DUrl(menu_3d, zoomto):
+    return getIframeURLfor3D(zoomto=zoomto) if menu_3d == 'Yes3D' else SCENE_3D_URL
+
+
+# ---------------------------------------------------------------------------
+# Callbacks
+# ---------------------------------------------------------------------------
+@app.callback(
+    [Output('graph_ri', 'children'), Output('time-graph', 'figure'),
+     Output('sunBurst-graph', 'figure'), Output('contextual-graph', 'figure'), Output('executive_sum_text', 'children')],
+    [Input('map-graph', 'clickData'), Input('year-slider', 'value'), Input('scale-observation', 'value'),
+     Input('contextual-menu', 'value'), Input('time-menu', 'value')])
+def update_graph_ri(clickData, yearValue, resolutionValue, contextValue, timeFigCategory):
+    try:
+        BldName = clickData['points'][0]['customdata'][0]
+    except (TypeError, KeyError, IndexError):
+        BldName = 'None'
+    return TimeSunBurstContextFigure(BldName, yearValue, resolutionValue, contextValue, timeFigCategory)
+
+
+@app.callback(
+    [Output('map-graph', 'figure'), Output('ifame-cell', 'src')],
+    [Input('year-slider', 'value'), Input('mapcolor-menu', 'value'), Input('graph_ri', 'children'), Input('menu3D', 'value')])
+def update_map2(yearValue, cat, titleText, menu_3d):
+    yearValue = cleanYear(yearValue)
+    cat = cleanChoice(cat, MAP_CATEGORIES, 'aib')
+    menu_3d = cleanChoice(menu_3d, MENU_3D, 'No3D')
+    zoomto = cleanChoice(str(titleText).split(':')[0], ZOOM_TARGETS, 'All of The Island')
+
+    r = resultsAll1.getAffordableMarketPerYear3(yearValue)
+    mapFigure = updateMapYear1(yearValue, rib.copy(), r, cat, zoomto=zoomto)
+    writeState(MAP_STATE_FILE, {'yearValue': yearValue, 'mapCat': cat,
+                                'Resolution_': zoomto, 'menu_3d': menu_3d})
+    return [mapFigure, scene3DUrl(menu_3d, zoomto)]
+
+
+# The projection pages poll the shared state and only re-render when it changed.
+@app.callback(
+    [Output('bldYearProj', 'children'), Output('time-graphProjDash', 'figure'), Output('sunBurst-graphProjDash', 'figure'),
+     Output('contextual-graphProDash', 'figure'), Output('executiveSumTextProj', 'children'),
+     Output('yearSliderProj', 'value'), Output('projDash-state', 'data')],
+    Input('interval-component_DashProj', 'n_intervals'), State('projDash-state', 'data'))
+def updateProjDash(n, lastState):
+    state = readState(DASH_STATE_FILE, DEFAULT_DASH_STATE)
+    if state == lastState:
+        raise PreventUpdate
+    header, timeFig, sunBurst, figContextual, executiveText = TimeSunBurstContextFigure(
+        state['BldName'], state['yearValue'], state['resolutionValue'], state['contextValue'], state['timeFigCategory'])
+    return [header, timeFig, sunBurst, figContextual, executiveText, cleanYear(state['yearValue']), state]
+
+
+@app.callback([Output('map-graphProj3D', 'figure'), Output('ifame-cellProj3D', 'src'), Output('proj3D-state', 'data')],
+              Input('interval-component_Dash3D', 'n_intervals'), State('proj3D-state', 'data'))
+def updateProj3D(n, lastState):
+    state = readState(MAP_STATE_FILE, DEFAULT_MAP_STATE)
+    if state == lastState:
+        raise PreventUpdate
+    yearValue = cleanYear(state['yearValue'])
+    zoomto = cleanChoice(state['Resolution_'], ZOOM_TARGETS, 'All of The Island')
+    r = resultsAll1.getAffordableMarketPerYear3(yearValue)
+    mapFigure = updateMapYear1(yearValue, rib.copy(), r,
+                               cleanChoice(state['mapCat'], MAP_CATEGORIES, 'aib'), zoomto=zoomto)
+    return [mapFigure, scene3DUrl(state['menu_3d'], zoomto), state]
+
+
+@app.callback([Output('ifame-cellOnly3D', 'src'), Output('only3D-state', 'data')],
+              Input('interval_Only3D', 'n_intervals'), State('only3D-state', 'data'))
+def updateOnly3D_1(n, lastState):
+    state = readState(MAP_STATE_FILE, DEFAULT_MAP_STATE)
+    if state == lastState:
+        raise PreventUpdate
+    zoomto = cleanChoice(state['Resolution_'], ZOOM_TARGETS, 'All of The Island')
+    return [scene3DUrl(state['menu_3d'], zoomto), state]
+
+
+@app.callback(Output('page-content', 'children'), Input('url', 'pathname'))
 def display_page(pathname):
-    if pathname == '/touchScreen':
-        return touchScreen
-    elif pathname == '/ProjDash':
-        return projDash
-    elif pathname == '/Proj3D':
-        return proj3D
-    elif pathname == '/Only3D':
-        return Only3D
-        #return touchScreen
-    else:
-        return touchScreen
-    # You could also return a 404 "URL not found" page here
+    pages = {'/ProjDash': projDash, '/Proj3D': proj3D, '/Only3D': Only3D}
+    return pages.get(pathname, touchScreen)
 
 
-# Run app and display result inline in the notebook
+@server.after_request
+def setSecurityHeaders(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    return response
+
+
 if __name__ == '__main__':
     app.run(debug=False)
