@@ -1,0 +1,14 @@
+# Render blueprint (https://render.com/docs/blueprint-spec).
+# One worker keeps memory under the 512 MB of the smallest instance; threads
+# let the page's parallel callbacks run concurrently.
+services:
+  - type: web
+    name: ri-microsimulator
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:server --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.2"
