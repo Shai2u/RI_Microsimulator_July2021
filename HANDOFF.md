@@ -66,6 +66,25 @@ not pandas. Next steps, if needed:
 - The projection-page state is global. On a public site, any visitor's selection changes what
   the projection pages show. This is fine for a kiosk; it would need per-session state otherwise.
 
+## Hosting plan: free or paid?
+
+Step-by-step publishing instructions are in [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+
+| | Render Free | Render Starter (~$7/month, check current pricing) |
+|---|---|---|
+| Wake-up delay | sleeps after ~15 min idle; next visitor waits ~30-60 s | always on |
+| Speed per click | small shared CPU, slower than a laptop | more CPU, close to local speed |
+| Monthly limits | capped free hours and bandwidth per account | no hour cap for the service |
+| Reliability | may be restarted or paused, no guarantees | meant for real use |
+| Credit card | not needed | must stay on the account |
+
+**Recommendation: start on Free.** Free is enough for a shared link with low traffic. Before a live demo,
+open the site a minute early to wake it. An open projection page (`/ProjDash`, `/Proj3D`) contacts the server
+every 1.5 s, which should keep the site awake while it runs. Upgrade to Starter (Settings → Instance Type,
+nothing to redeploy) if the client demos it live to stakeholders, runs it as a permanent installation,
+or finds clicks slow. The client should then add their own card so Render bills them directly.
+Avoid keep-awake ping services: they work against the free plan's rules and use up its hours.
+
 ## Republishing (M6) checklist
 
 1. Review and merge `revive-2026` into `main` (or point Render at the branch).
