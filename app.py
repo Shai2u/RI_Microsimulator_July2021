@@ -1,4 +1,5 @@
 import colorsys
+import functools
 import json
 import os
 import re
@@ -10,11 +11,18 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent / 'assets' / 'legacy_resources'
+
+pio.templates['ri'] = go.layout.Template(layout=dict(
+    font=dict(family='system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'),
+    title=dict(x=0.01, xanchor='left', font=dict(size=15)),
+    paper_bgcolor='white', plot_bgcolor='white'))
+pio.templates.default = 'plotly_white+ri'
 HSV_RE = re.compile(r'hsv\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)')
 
 
@@ -47,8 +55,9 @@ colorDictMerge = dict(
 geoJSONloc = DATA_DIR / 'rib_feb_11.geojson'
 csvResultsloc = DATA_DIR / 'result_dec_21_955.csv'
 jsonBldgs = gpd.read_file(geoJSONloc).to_crs("EPSG:4326")
-resData = pd.read_csv(csvResultsloc, low_memory=False)
-resData = resData.iloc[:, 1:]
+RESULT_COLUMNS = ['ap_index', 'Building Name', 'Group', 'affordable_living', 'cause', 'annual_expenses',
+                  'agentID', 'tenant_cycle', 'income', 'move_in', 'move_out', 'birth_date', 'death_age']
+resData = pd.read_csv(csvResultsloc, usecols=RESULT_COLUMNS)
 resData['birth_date'] = pd.to_datetime(resData['birth_date'], errors='coerce')
 resData = resData[resData['birth_date'].notna()].copy()
 resData['move_in'] = pd.to_datetime(resData['move_in'])
@@ -61,13 +70,13 @@ incomeSmallCat.set_index('income', inplace=True)
 ageSmallCat = group_color_dict[['Age Group',
                                 'Age min', 'Age max']].drop_duplicates()
 ageSmallCat.set_index('Age Group', inplace=True)
-# ageSmallCat['Age max'] =[45,65,85,150]
 ageRangeSmall = [0]+ageSmallCat['Age max'].values.tolist()
 ageLbaelsSmall = ageSmallCat.index.tolist()
 incomeRangeSmall = incomeSmallCat['income max'].values.tolist() + [0]
 incomeLabelSmall = incomeSmallCat.index.tolist()
 incomeRangeSmall.reverse()
 incomeLabelSmall.reverse()
+incomeRangeSmall[0], incomeRangeSmall[-1] = -np.inf, np.inf  # open-ended Low / Upper bands
 YEAR_MIN, YEAR_MAX, YEAR_DEFAULT = 1976, 2080, 2000
 yearListSlider = {year: str(year) for year in range(1980, YEAR_MAX + 1, 20)}
 
@@ -98,51 +107,25 @@ class bldFunctionality():
         return self.ds[filter_].copy()
 
 
-    def getAffordableMarketPerYear3(self, ye_, gr=group_color_dict, gr2=censusIncomeDict):
-        '''Recives Results, Year and Color File'''
-        res_1 = self.filterByFullYear(ye_)
-        res_2 = res_1[['Group', 'Building Name', 'ap_index',
-                       'affordable_living', 'income', 'tenant_cycle', 'birth_date']].copy()
-        res_2['income_group'] = res_2['income'].apply(
-            incomeClass.getIncomeCategory)
+    def getAffordableMarketPerYear3(self, ye_):
+        """Residents of a full year with age/income groups and colours. Cached per
+        year; a copy is returned so callers may modify it freely."""
+        return self._affordableMarketPerYear(int(ye_)).copy()
+
+    @functools.lru_cache(maxsize=24)
+    def _affordableMarketPerYear(self, ye_):
+        res_2 = self.filterByFullYear(ye_)[['Group', 'Building Name', 'ap_index',
+                                            'affordable_living', 'income', 'tenant_cycle', 'birth_date']]
+        res_2 = res_2.reset_index(drop=True)
+        res_2['income_group'] = incomeClass.getIncomeCategory(res_2['income'])
         res_2['raw age'] = ye_ - res_2['birth_date'].dt.year
-        res_2['get_mid'] = res_2['raw age'].apply(ageClass.getGroupCategory)
-        res_2['age_group'] = res_2['get_mid'].apply(
-            lambda x: ageClass.mid2Group[x])
+        res_2['get_mid'] = ageClass.getGroupCategory(res_2['raw age'])
+        res_2['age_group'] = res_2['get_mid'].map(ageClass.mid2Group)
         res_2['year'] = ye_
-        res_2['ap_class'] = res_2['affordable_living'].apply(
-            lambda x: 'Protected' if x == 1 else 'Market')
-        res_2.reset_index(inplace=True, drop=True)
-        for i in gr.index:
-            row_ = gr.loc[i]
-            min_age, max_age, min_income, max_income = row_['Age min'], row_[
-                'Age max'], row_['income min'], row_['income max']
-            age_group, income_group = row_['Age Group'], row_['income']
-            gr_name = row_['group_name']
-            color_ = row_['colors_']
-            age_color = row_['colors_age']
-            income_color = row_['colors_income']
-            search_ = ((res_2['raw age'] >= min_age) & (res_2['raw age'] <= max_age)) & (
-                (res_2['income'] >= min_income) & (res_2['income'] <= max_income))
-            # search_ =
-            res_2.loc[search_, 'group_name'] = gr_name
-            res_2.loc[search_, 'group_color'] = color_
-            res_2.loc[search_, 'AgeGroup4'] = age_group
-            res_2.loc[search_, 'IncomeGroup4'] = income_group
-            res_2.loc[search_, 'age_color'] = age_color
-            res_2.loc[search_, 'income_color'] = income_color
-        for item in gr2.items():
-            res_2.loc[res_2['income_group'] == item[0],
-                      'icnome_color_census'] = item[1]
-        res_2.loc[res_2['ap_class'] == 'Protected', 'ap_class'] = 'Affordable'
-
-        res_2.rename(columns={'IncomeGroup4': 'Income', 'AgeGroup4': 'Age Group',
-                              'tenant_cycle': 'Tenant Cycle', 'ap_index': 'Door Number'}, inplace=True)
-        return res_2
-
-
-
-
+        res_2['ap_class'] = np.where(res_2['affordable_living'] == 1, 'Affordable', 'Market')
+        res_2 = pd.concat([res_2, ageIncomeGroups(res_2['raw age'], res_2['income'])], axis=1)
+        res_2['icnome_color_census'] = res_2['income_group'].map(censusIncomeDict)
+        return res_2.rename(columns={'tenant_cycle': 'Tenant Cycle', 'ap_index': 'Door Number'})
 
 
 class simDataset(bldFunctionality):
@@ -182,6 +165,21 @@ class simDataset(bldFunctionality):
 
 
 
+def ageIncomeGroups(age, income, gr=group_color_dict):
+    """Age x income group of every household, by the bands in group_color_jan_7.xlsx.
+    Each band starts at its 'min'; the oldest and richest bands are open-ended."""
+    ageBands = gr[['Age Group', 'Age min']].drop_duplicates().sort_values('Age min')
+    incomeBands = gr[['income', 'income min']].drop_duplicates().sort_values('income min')
+    ageIdx = np.searchsorted(ageBands['Age min'].to_numpy(), age.to_numpy(), side='right') - 1
+    incomeIdx = np.searchsorted(incomeBands['income min'].to_numpy(), income.to_numpy(), side='right') - 1
+    key = pd.DataFrame({'Age Group': ageBands['Age Group'].to_numpy()[ageIdx.clip(0)],
+                        'Income': incomeBands['income'].to_numpy()[incomeIdx.clip(0)]}, index=age.index)
+    lookup = gr.rename(columns={'income': 'Income', 'colors_': 'group_color', 'colors_age': 'age_color',
+                                'colors_income': 'income_color'})
+    lookup = lookup[['Age Group', 'Income', 'group_name', 'group_color', 'age_color', 'income_color']]
+    return key.merge(lookup, on=['Age Group', 'Income'], how='left').set_index(age.index)
+
+
 class ageClass:
     ageGroup2Mid = {'25-35': 30,
                     '36-45': 40,
@@ -193,60 +191,22 @@ class ageClass:
                     '90+': 90}
     mid2Group = {value: key for (key, value) in ageGroup2Mid.items()}
 
-    def getGroupCategory(age_):
-        """Returns the group Category for a given Age"""
-        if (age_ > 85):
-            return 90
-        elif (age_ > 75):
-            return 80
-        elif (age_ > 65):
-            return 70
-        elif (age_ > 60):
-            return 63
-        elif (age_ > 55):
-            return 58
-        elif (age_ > 45):
-            return 50
-        elif(age_ > 35):
-            return 40
-        else:
-            return 30
-
+    @staticmethod
+    def getGroupCategory(age):
+        """Group mid-point for each age (Series)."""
+        return pd.Series(np.select([age > 85, age > 75, age > 65, age > 60, age > 55, age > 45, age > 35],
+                                   [90, 80, 70, 63, 58, 50, 40], default=30), index=age.index)
 
 
 class incomeClass:
-    def getIncomeCategory(x):
-        """Returns a income category for a given income"""
-        # get tiltes for given income
-        # need to add a sort function
-        if (x >= 200000):
-            return '$200K+'
-        elif (x >= 150000):
-            return '$150K-199K'
-        elif (x >= 100000):
-            return '$100K-149K'
-        elif (x >= 75000):
-            return '$75K-99K'
-        elif (x >= 50000):
-            return '$50K-74K'
-        elif (x >= 35000):
-            return '$35K-49K'
-        elif (x >= 25000):
-            return '$25K-34K'
-        elif (x >= 15000):
-            return '$15K-24K'
-        else:
-            return '<$15K'
-
-    mid_income = {'$200K+': 225000,
-                  '$150K-199K': 175000,
-                  '$100K-149K': 125000,
-                  '$75K-99K': 80000,
-                  '$50K-74K': 60000,
-                  '$35K-49K': 40000,
-                  '$25K-34K': 30000,
-                  '$15K-24K': 20000,
-                  '<$15K': 7500}
+    @staticmethod
+    def getIncomeCategory(income):
+        """Census income category for each income (Series)."""
+        return pd.Series(np.select(
+            [income >= 200000, income >= 150000, income >= 100000, income >= 75000,
+             income >= 50000, income >= 35000, income >= 25000, income >= 15000],
+            ['$200K+', '$150K-199K', '$100K-149K', '$75K-99K', '$50K-74K', '$35K-49K', '$25K-34K', '$15K-24K'],
+            default='<$15K'), index=income.index)
 
 
 class sim_plot:
@@ -271,24 +231,17 @@ class sim_plot:
 
     @staticmethod
     def reasulToLeaveByTime(r, titleText_):
-        r = r[['Building Name', 'Group', 'cause',
-               'stay_go', 'agentID', 'year']].copy()
-        r['status'] = r['stay_go']
-        r.loc[r['stay_go'] == 'out',
-              'status'] = r.loc[r['stay_go'] == 'out', 'cause']
-        r2 = r.groupby(['year', 'status']).agg(
-            {'agentID': 'count'}).reset_index()
-        r2.rename(columns={'agentID': 'Household Agents'}, inplace=True)
-        r2 = r2[r2['status'].isin(
+        moved = r[(r['stay_go'] == 'out') & r['cause'].isin(
             ['Rent Burden', 'death', 'Mortgage Burden', 'Total Burden'])]
-
-        r2.loc[r2['status'] == 'death', 'status'] = 'Death'
+        r2 = pd.DataFrame({'year': moved['year'],
+                           'status': moved['cause'].astype(str).replace({'death': 'Death'})})
+        r2 = r2.value_counts(['year', 'status']).rename('Household Agents').reset_index().sort_values(['year', 'status'])
 
         leaveColorDict = {'Rent Burden': 'blue', 'Death': 'red',
                           'Mortgage Burden': 'purple', 'Total Burden': 'green'}
 
         fig = px.bar(r2, x="year", y="Household Agents",
-                     color="status", color_discrete_map=leaveColorDict, title=titleText_, template='plotly_white')
+                     color="status", color_discrete_map=leaveColorDict, title=titleText_)
         fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
@@ -304,7 +257,7 @@ class sim_plot:
                            'raw age': 'Mean Age', 'death_age': 'Death Age'}, inplace=True)
 
         fig = px.line(r2, x="year", y=["Mean Age", "Death Age"], title=titleText_,
-                      template='plotly_white', labels=dict(value="Age", variable="Legend"))
+                      labels=dict(value="Age", variable="Legend"))
         fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
@@ -319,7 +272,7 @@ class sim_plot:
                            'age_group_2': 'Age Group'}, inplace=True)
 
         fig = px.line(r2, x="year", y="Household Agents",
-                      color="Age Group", color_discrete_map=colorDict, title=titleText_, template='plotly_white')
+                      color="Age Group", color_discrete_map=colorDict, title=titleText_)
         fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=1.05, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
@@ -334,7 +287,7 @@ class sim_plot:
                            'income_group_2': 'Income Group'}, inplace=True)
 
         fig = px.line(r2, x="year", y="Household Agents", color="Income Group",
-                      color_discrete_map=colorDict, title=titleText_, template='plotly_white')
+                      color_discrete_map=colorDict, title=titleText_)
 
         fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
@@ -351,7 +304,7 @@ class sim_plot:
                            'annual_expenses': 'Man Annual Exprense'}, inplace=True)
 
         fig = px.line(r2, x="year", y=["Mean Income", "Man Annual Exprense"], title=titleText_,
-                      template='ggplot2', labels=dict(value="US Dollars", variable="Expenses"))
+                      labels=dict(value="US Dollars", variable="Expenses"))
         fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
@@ -362,7 +315,7 @@ class sim_plot:
         r2 = r.groupby('Age Group').agg({'get_mid': 'count'}).reset_index().rename(
             columns={'get_mid': 'Households'})
         title_ = str(year_)+' '+titleText_ + ' Age Groups'
-        fig = px.bar(r2, x='Age Group', y='Households', template='plotly_white', title=title_, color='Age Group',
+        fig = px.bar(r2, x='Age Group', y='Households', title=title_, color='Age Group',
                      color_discrete_map=colorDict, category_orders={'Age Group': ['18-44', '45-64', '65-84', '85+']})
         fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
         return fig
@@ -372,7 +325,7 @@ class sim_plot:
         r2 = r.groupby('Income').agg({'get_mid': 'count'}).reset_index().rename(
             columns={'Income': 'Income Group', 'get_mid': 'Households'})
         title_ = str(year_)+' '+titleText_ + ' Income Groups'
-        fig = px.bar(r2, x='Income Group', y='Households', template='plotly_white', title=title_, color='Income Group',
+        fig = px.bar(r2, x='Income Group', y='Households', title=title_, color='Income Group',
                      color_discrete_map=colorDict, category_orders={'Income Group': ['Low', 'Moderate', 'Middle', 'Upper']})
         fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
         return fig
@@ -384,7 +337,7 @@ class sim_plot:
         r2 = r.groupby('income_group').agg({'get_mid': 'count'}).reset_index().rename(
             columns={'income_group': 'Income Group Census Categories', 'get_mid': 'Households'})
         title_ = str(year_)+' '+titleText_ + ' Income Group Census Categories'
-        fig = px.bar(r2, x='Income Group Census Categories', y='Households', template='plotly_white', title=title_,
+        fig = px.bar(r2, x='Income Group Census Categories', y='Households', title=title_,
                      color='Income Group Census Categories', color_discrete_map=censusIncomeDict, category_orders={'Income Group Census Categories': catIncome})
         fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
         return fig
@@ -399,66 +352,45 @@ class sim_plot:
         fig = px.scatter(r2, x="Age Group", y="Income",
                          size="count", color="group_name", color_discrete_map=colorDictMerge, facet_col='Ap Type', title=title_, size_max=30,
                          category_orders={"Age Group": ["18-44", "45-64", "65-84", "85+"],
-                                          "Income": ['Upper', 'Middle', 'Moderate', 'Low']}, template='ggplot2')
+                                          "Income": ['Upper', 'Middle', 'Moderate', 'Low']})
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))  # 'Ap Type=Market' -> 'Market'
         fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
 
         return fig
 
     @staticmethod
-    def sunburstGroupsAffordMarketYearColor3(r, year_, color_field='raw age', colorDict_=colorDict, group_color_dict=group_color_dict):
-        title_ = f'{year_} : Market Vs Affordable Units Age/Income in WIRE'
-        # color_discrete_map = color_group_map_
-        colors_ = group_color_dict['colors_age'].unique().tolist()
-        fig = px.sunburst(r, path=['ap_class', 'Age Group', 'Income'],
-                          color=color_field, color_continuous_scale=colors_, title=title_,)
-
+    def sunburstGroupsAffordMarketYearColor3(r, year_, scopeLabel='', colorDict_=colorDict):
+        title_ = f'{year_}: Market vs Affordable<br><sup>by Age/Income, {scopeLabel}</sup>'
+        # colour='raw age' is needed for rows outside the age/income bands; the
+        # colours themselves are then replaced by the label palette.
+        fig = px.sunburst(r, path=['ap_class', 'Age Group', 'Income'], color='raw age', title=title_)
         labels_text = fig.data[0].labels.tolist()
-        colorLabels = tuple(colorDict_[item] for item in labels_text)
-        fig.data[0].marker.colors = colorLabels
+        fig.data[0].marker.colors = tuple(colorDict_.get(item, '#cccccc') for item in labels_text)
+        fig.update_coloraxes(showscale=False)
         fig.update_traces(textinfo="label+percent entry")
         fig.update_layout(showlegend=False, margin=sim_plot.margin, legend=dict(
             yanchor="top", y=1, xanchor="left", x=1, orientation="h"),font=dict(size=sim_plot.textSize_))
         return fig
 
+    PANEL_COLUMNS = ['Building Name', 'Group', 'affordable_living', 'cause', 'move_in',
+                     'birth_date', 'death_age', 'income', 'annual_expenses', 'agentID']
+
     @staticmethod
     def getAgentsByRangeAllGroupInOut2(ds, years_range):
-        for ye_ in years_range:
-            if np.mod(ye_, 10) == 0:
-                print('year:', ye_)
-            if ye_ == years_range[0]:
-                all_years = sim_plot.getAgentYearGroupInOut(ds, ye_).copy()
-            else:
-                toConcat = sim_plot.getAgentYearGroupInOut(ds, ye_).copy()
-                all_years = pd.concat([all_years, toConcat])
-        return all_years
+        """Residents ('stay'/'new') and movers-out ('out') of every year, stacked."""
+        return pd.concat([sim_plot.getAgentYearGroupInOut(ds, ye_) for ye_ in years_range], ignore_index=True)
 
+    @staticmethod
     def getAgentYearGroupInOut(ds, ye_):
-        ds_fyear = ds.filterByFullYear(ye_)
-        ds_moveout = ds.filterDisplacedByFullYearDate(ye_)
-        ds_fyear = ds_fyear[['Building Name', 'Group', 'tenant_cycle', 'ApartmentType', 'comment 1', 'affordable_living', 'cause', 'move_in', 'move_out',
-                             'birth_date', 'death_age', 'death_date', 'income', 'annual_expenses', 'annual_expenses_burden', 'agentID']].copy()
-        ds_moveout = ds_moveout[['Building Name', 'Group', 'tenant_cycle', 'ApartmentType', 'comment 1', 'affordable_living', 'cause', 'move_in', 'move_out',
-                                 'birth_date', 'death_age', 'death_date', 'income', 'annual_expenses', 'annual_expenses_burden', 'agentID']].copy()
-        ds_fyear['annual_expenses_burden'] = ds_fyear['annual_expenses'] / \
-            ds_fyear['income']
-        ds_moveout['annual_expenses_burden'] = ds_moveout['annual_expenses'] / \
-            ds_moveout['income']
-        ds_moveout['stay_go'] = 'out'
-        ds_fyear['stay_go'] = 'stay'
-        ds_fyear.loc[pd.to_datetime(ds_fyear['move_in']).dt.year == ye_, 'stay_go'] = 'new'
-        all_y = pd.concat([ds_fyear, ds_moveout])
-        all_y['income_group'] = all_y['income'].apply(
-            incomeClass.getIncomeCategory)
+        ds_fyear = ds.filterByFullYear(ye_)[sim_plot.PANEL_COLUMNS]
+        ds_moveout = ds.filterDisplacedByFullYearDate(ye_)[sim_plot.PANEL_COLUMNS]
+        all_y = pd.concat([ds_fyear, ds_moveout], ignore_index=True)
+        all_y['stay_go'] = np.where(np.arange(len(all_y)) >= len(ds_fyear), 'out',
+                                    np.where(all_y['move_in'].dt.year == ye_, 'new', 'stay'))
+        all_y['annual_expenses_burden'] = all_y['annual_expenses'] / all_y['income']
         all_y['raw age'] = ye_ - all_y['birth_date'].dt.year
-        all_y['get_mid'] = all_y['raw age'].apply(
-            ageClass.getGroupCategory)
-        all_y['age_group'] = all_y['get_mid'].apply(lambda x:
-                                                    ageClass.mid2Group[x])
         all_y['year'] = ye_
-        return all_y
-
-
-
+        return all_y.drop(columns=['move_in', 'birth_date'])
 
     def AgentCycle(r, year_, title_):
         affordCycles = r.loc[r['ap_class'] == 'Affordable', 'Tenant Cycle']
@@ -470,7 +402,7 @@ class sim_plot:
             x=marketCycles, name='Market Units'))
 
         # Overlay both histograms
-        histogramFig.update_layout(barmode='overlay', title=f'Tenant Cycles {year_} {title_}', template='plotly_white', legend=dict(
+        histogramFig.update_layout(barmode='overlay', title=f'Tenant Cycles {year_} {title_}', legend=dict(
             yanchor="top", y=0.85, xanchor="left", x=0.01, orientation="h"), margin=sim_plot.margin)
         # Reduce opacity to see both histograms
         histogramFig.update_traces(opacity=0.75)
@@ -496,14 +428,11 @@ allByYear['age_group_2'] = pd.cut(
     allByYear['raw age'].values, ageRangeSmall, labels=ageLbaelsSmall)
 allByYear['income_group_2'] = pd.cut(
     allByYear['income'].values, incomeRangeSmall, labels=incomeLabelSmall)
-# allByYear.groupby('year')
-allByYearStay = allByYear[allByYear['stay_go'] != 'out'].copy().reset_index()
-# Get a WIRE subset
-allByYearWire = allByYearStay.loc[allByYearStay['Group'] == 'WIRE'].copy()
-allByYearWire.reset_index(inplace=True, drop=True)
-
-allByYearNotWire = allByYearStay.loc[allByYearStay['Group'] != 'WIRE'].copy()
-allByYearNotWire.reset_index(inplace=True, drop=True)
+for col in ['Building Name', 'Group', 'cause', 'stay_go']:
+    allByYear[col] = allByYear[col].astype('category')
+allByYearStay = allByYear[allByYear['stay_go'] != 'out'].reset_index(drop=True)
+allByYearWire = allByYearStay[allByYearStay['Group'] == 'WIRE']
+allByYearNotWire = allByYearStay[allByYearStay['Group'] != 'WIRE']
 
 
 def addAffordableStatistics(r):
@@ -556,7 +485,7 @@ def affordabilityTimeSeriesAgregattedGraph(aw, mC, aC, title_):
                              line=line_coop,
                              hovertemplate='<br><b>Market Units</b>:%{y:}<br>' +
                              '<b>Percent:</b> %{text} %',
-                             text=['{:.1f}'.format(p*100, 1)
+                             text=['{:.1f}'.format(p*100)
                                    for p in percent_c]
                              ))
 
@@ -566,7 +495,7 @@ def affordabilityTimeSeriesAgregattedGraph(aw, mC, aC, title_):
                              line=line_rent,
                              hovertemplate='<br><b>Affordable Units</b> : %{y:}<br>' +
                              '<b>Percent : </b>%{text} %',
-                             text=['{:.1f}'.format(p*100, 1)
+                             text=['{:.1f}'.format(p*100)
                                    for p in percent_r],
                              ))
 
@@ -585,7 +514,7 @@ def affordabilityTimeSeriesAgregattedGraph(aw, mC, aC, title_):
     fig.update_yaxes(range=[0, maxY], showline=True,
                      linecolor='rgb(150,150,150)', title='Households')
     fig.update_layout(plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=0.97, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
-                      margin=sim_plot.margin, title=bldgsGroupTitle + " Market and Affordable Units Time Series",font=dict(size=sim_plot.textSize_))
+                      margin=sim_plot.margin, title=f"{bldgsGroupTitle}<br><sup>Market and Affordable Units Time Series</sup>",font=dict(size=sim_plot.textSize_))
     return fig
 
 
@@ -596,7 +525,7 @@ def baseFigForAffordableTS(title_, ymax, yloc):
     fig.update_yaxes(range=[0, ymax], showline=True,
                      linecolor='rgb(150,150,150)', title='Households')
     fig.update_layout(plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=yloc, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
-                     margin=sim_plot.margin, title=title_ + " Market and Affordable Units Time Series",font=dict(size=sim_plot.textSize_))
+                     margin=sim_plot.margin, title=f"{title_}<br><sup>Market and Affordable Units Time Series</sup>",font=dict(size=sim_plot.textSize_))
     return fig
 
 
@@ -662,13 +591,11 @@ def createAffordableInduvidualBldgs(title_, maxY, yloc, year_):
 
 
 def getCurrentScope(r):
-    uniqBldgs = r['Building Name'].nunique()
-    agentsC = len(r)
-    tenantCycle = round(r['Tenant Cycle'].mean(), 1)
-    meanAge = round(r['raw age'].mean(), 1)
-    meanIncome = round(r['income'].mean(), 0)
-    rtText = f"In Scope - Buildings: {uniqBldgs}, HH: {agentsC}, Tenant Cycles: {tenantCycle} Mean Age:{meanAge}, Mean Income:{meanIncome}$"
-    return rtText
+    if r.empty:
+        return 'No households in scope for this year'
+    return (f"Buildings {r['Building Name'].nunique()} · Households {len(r):,} · "
+            f"Tenant cycles {r['Tenant Cycle'].mean():.1f} · Mean age {r['raw age'].mean():.1f} · "
+            f"Mean income ${r['income'].mean():,.0f}")
 
 
 SCENE_3D_URL = 'https://technion-gis.maps.arcgis.com/apps/instant/3dviewer/index.html?appid=70a5849b08a643e188c1e082cfb579c4'
@@ -796,7 +723,7 @@ server = app.server
 # Layout. Bootstrap grid: three columns on wide screens, two on tablets,
 # stacked on phones. Graphs are filled by the callbacks on first load.
 # ---------------------------------------------------------------------------
-GRAPH_CONFIG = {'displaylogo': False, 'responsive': True}
+GRAPH_CONFIG = {'displaylogo': False, 'responsive': True, 'displayModeBar': False}
 MAP_HEIGHT = 'clamp(380px, 72vh, 950px)'
 TIME_HEIGHT = 'clamp(300px, 40vh, 560px)'
 DETAIL_HEIGHT = 'clamp(300px, 38vh, 520px)'
@@ -867,13 +794,14 @@ def yearSlider(id_):
 
 def headerRow(title_id, summary_id):
     return dbc.Row([
-        dbc.Col(card(html.H5(f'All of The Island: {YEAR_DEFAULT}', id=title_id, className='m-0'),
-                     fill=True, style={'textAlign': 'center'}), md=4),
-        dbc.Col(card(html.Div(id=summary_id, className='small'), fill=True, style={'textAlign': 'center'}), md=8),
+        dbc.Col(card([html.Div('Roosevelt Island Microsimulator', className='small text-muted'),
+                      html.H5(f'All of The Island: {YEAR_DEFAULT}', id=title_id, className='m-0')],
+                     fill=True), md=4),
+        dbc.Col(card(html.Div(id=summary_id, className='h-100 d-flex align-items-center'), fill=True), md=8),
     ], className='g-2 mb-2')
 
 
-touchScreen = dbc.Container(fluid=True, className='py-2', children=[
+touchScreen = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', children=[
     headerRow('graph_ri', 'executive_sum_text'),
     dbc.Row(className='g-2', children=[
         # Map: first on phones, second column on wide screens
@@ -902,7 +830,7 @@ touchScreen = dbc.Container(fluid=True, className='py-2', children=[
 ])
 
 # Projection pages: mirror the touch screen selection (see shared state below).
-projDash = dbc.Container(fluid=True, className='py-2', children=[
+projDash = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', children=[
     headerRow('bldYearProj', 'executiveSumTextProj'),
     card(yearSlider('yearSliderProj')),
     html.Div(card(graph('time-graphProjDash', '42vh')), className='mt-2'),
@@ -914,7 +842,7 @@ projDash = dbc.Container(fluid=True, className='py-2', children=[
     dcc.Interval(id='interval-component_DashProj', interval=1500),
 ])
 
-proj3D = dbc.Container(fluid=True, className='py-2', children=[
+proj3D = dbc.Container(fluid=True, className='py-2 bg-light min-vh-100', children=[
     dbc.Row(className='g-2', children=[
         dbc.Col(card(scene3D('ifame-cellProj3D', '94vh')), md=6),
         dbc.Col(card(graph('map-graphProj3D', '94vh')), md=6),
@@ -1079,20 +1007,34 @@ def TimeSunBurstContextFigure(BldName, yearValue, resolutionValue, contextValue,
     timeFigCategory = cleanChoice(timeFigCategory, TIME_CATEGORIES, 'am')
     BldName = cleanBuilding(BldName)
 
+    scope, _ = resolveScope(BldName, resolutionValue)
+    if scope != 'building':
+        BldName = 'None'
+    writeState(DASH_STATE_FILE, {
+        'BldName': BldName, 'yearValue': yearValue, 'resolutionValue': resolutionValue,
+        'contextValue': contextValue, 'timeFigCategory': timeFigCategory})
+    return list(dashboardFigures(BldName, yearValue, resolutionValue, contextValue, timeFigCategory))
+
+
+# Cache sizes are kept small so the app fits in a 512 MB instance.
+@functools.lru_cache(maxsize=48)
+def dashboardFigures(BldName, yearValue, resolutionValue, contextValue, timeFigCategory):
+    """Pure function of the (validated) selection, so results are cached.
+    Returned figures are shared between requests and must not be mutated."""
     scope, scopeLabel = resolveScope(BldName, resolutionValue)
     currentData_ = resultsAll1.getAffordableMarketPerYear3(yearValue)
     scopeData = currentData_[scopeMask(currentData_, scope, BldName)].copy()
 
     header = f'{scopeLabel}: {yearValue}'
     fig = timeFigure(scope, BldName, resolutionValue, timeFigCategory, yearValue)
-    sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(scopeData, yearValue)
+    sunBurstFig = sim_plot.sunburstGroupsAffordMarketYearColor3(scopeData, yearValue, scopeLabel)
     figContextual = contextualFigure(scope, scopeData, contextValue, yearValue)
-    executiveText = getCurrentScope(scopeData)
+    return header, fig, sunBurstFig, figContextual, getCurrentScope(scopeData)
 
-    writeState(DASH_STATE_FILE, {
-        'BldName': BldName if scope == 'building' else 'None', 'yearValue': yearValue,
-        'resolutionValue': resolutionValue, 'contextValue': contextValue, 'timeFigCategory': timeFigCategory})
-    return [header, fig, sunBurstFig, figContextual, executiveText]
+
+@functools.lru_cache(maxsize=48)
+def mapFigure(yearValue, cat, zoomto):
+    return updateMapYear1(yearValue, rib, resultsAll1.getAffordableMarketPerYear3(yearValue), cat, zoomto=zoomto)
 
 
 def scene3DUrl(menu_3d, zoomto):
@@ -1124,11 +1066,9 @@ def update_map2(yearValue, cat, titleText, menu_3d):
     menu_3d = cleanChoice(menu_3d, MENU_3D, 'No3D')
     zoomto = cleanChoice(str(titleText).split(':')[0], ZOOM_TARGETS, 'All of The Island')
 
-    r = resultsAll1.getAffordableMarketPerYear3(yearValue)
-    mapFigure = updateMapYear1(yearValue, rib.copy(), r, cat, zoomto=zoomto)
     writeState(MAP_STATE_FILE, {'yearValue': yearValue, 'mapCat': cat,
                                 'Resolution_': zoomto, 'menu_3d': menu_3d})
-    return [mapFigure, scene3DUrl(menu_3d, zoomto)]
+    return [mapFigure(yearValue, cat, zoomto), scene3DUrl(menu_3d, zoomto)]
 
 
 # The projection pages poll the shared state and only re-render when it changed.
@@ -1154,10 +1094,8 @@ def updateProj3D(n, lastState):
         raise PreventUpdate
     yearValue = cleanYear(state['yearValue'])
     zoomto = cleanChoice(state['Resolution_'], ZOOM_TARGETS, 'All of The Island')
-    r = resultsAll1.getAffordableMarketPerYear3(yearValue)
-    mapFigure = updateMapYear1(yearValue, rib.copy(), r,
-                               cleanChoice(state['mapCat'], MAP_CATEGORIES, 'aib'), zoomto=zoomto)
-    return [mapFigure, scene3DUrl(state['menu_3d'], zoomto), state]
+    figure = mapFigure(yearValue, cleanChoice(state['mapCat'], MAP_CATEGORIES, 'aib'), zoomto)
+    return [figure, scene3DUrl(state['menu_3d'], zoomto), state]
 
 
 @app.callback([Output('ifame-cellOnly3D', 'src'), Output('only3D-state', 'data')],
