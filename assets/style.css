@@ -65,4 +65,42 @@ body {
 }
 
 /* 3D scene: tinted placeholder while ArcGIS loads */
-.ri-scene { background: linear-gradient(160deg, #dfe6ee, #f3f5f8); border-radius: 8px; }
+.ri-scene { display: block; background: linear-gradient(160deg, #dfe6ee, #f3f5f8); border-radius: 8px; }
+
+/* ------------------------------------------------------------------
+   Sizing. Phones/tablets: panels stack and the page scrolls.
+   Laptops and up (>= 992px wide, >= 560px tall): each page fills the
+   window exactly, no scrolling; panels share the available height.
+   ------------------------------------------------------------------ */
+html, body { overflow-x: hidden; }
+.ri-stack { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.ri-panel { width: 100%; min-width: 0; }
+.ri-map    { height: clamp(360px, 62vh, 760px); }
+.ri-time   { height: clamp(280px, 42vh, 520px); }
+.ri-detail { height: clamp(280px, 42vh, 520px); }
+.ri-only3d .ri-map { height: 100vh; border-radius: 0; }
+
+@media (min-width: 992px) and (min-height: 560px) {
+  .ri-fit {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .ri-fit > .ri-header { flex: 0 0 auto; }
+  .ri-fit > .ri-main {
+    flex: 1 1 0;
+    min-height: 0;
+    --bs-gutter-y: 0;
+    margin-top: 0;
+  }
+  .ri-main > [class*="col"],
+  .ri-grow > [class*="col"] { height: 100%; min-height: 0; margin-top: 0; }
+  .ri-analytics { min-height: 0; }
+  .ri-grow { flex: 1 1 0; min-height: 0; }
+  .ri-grow.row { --bs-gutter-y: 0; margin-top: 0; }
+  /* graphs and the 3D scene take whatever height their card has left */
+  .ri-fit .ri-panel { flex: 1 1 0; height: auto; min-height: 0; }
+  .ri-fit .card { min-height: 0; }
+  .ri-fit .card-body { min-height: 0; }
+}

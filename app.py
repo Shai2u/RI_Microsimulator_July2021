@@ -728,14 +728,14 @@ server = app.server
 # Layout. Bootstrap grid: three columns on wide screens, two on tablets,
 # stacked on phones. Graphs are filled by the callbacks on first load.
 # ---------------------------------------------------------------------------
+# Sizing lives in assets/style.css: on screens >= 992px wide the pages fill the
+# window exactly (no scrolling) and panels share the height; smaller screens stack.
 GRAPH_CONFIG = {'displaylogo': False, 'responsive': True, 'displayModeBar': False}
-MAP_HEIGHT = 'clamp(380px, 72vh, 950px)'
-TIME_HEIGHT = 'clamp(300px, 40vh, 560px)'
-DETAIL_HEIGHT = 'clamp(300px, 38vh, 520px)'
 
 
-def graph(id_, height):
-    return dcc.Graph(id=id_, config=GRAPH_CONFIG, style={'height': height})
+def graph(id_, size):
+    """size: 'map', 'time' or 'detail' (see .ri-<size> in style.css)."""
+    return dcc.Graph(id=id_, config=GRAPH_CONFIG, className=f'ri-panel ri-{size}')
 
 
 def labeled(label, control):
@@ -743,14 +743,15 @@ def labeled(label, control):
 
 
 def card(children, fill=False, **kwargs):
-    """fill=True stretches the card to its row height (for side-by-side cards)."""
-    return dbc.Card(dbc.CardBody(children, className='p-3'),
+    """fill=True stretches the card to its container and lets its graph take the free height."""
+    return dbc.Card(dbc.CardBody(children, className='p-3 ri-stack'),
                     className='ri-card' + (' h-100' if fill else ''), **kwargs)
 
 
-def scene3D(id_, height):
-    return html.Iframe(id=id_, src=SCENE_3D_URL, title='3D model of Roosevelt Island', className='ri-scene',
-                       style={'width': '100%', 'height': height, 'border': 0})
+def scene3D(id_):
+    return html.Iframe(id=id_, src=SCENE_3D_URL, title='3D model of Roosevelt Island',
+                       className='ri-panel ri-map ri-scene', style={'width': '100%', 'border': 0})
+
 
 
 scaleDropDownMenu = dcc.Dropdown(id='scale-observation', clearable=False, value='ri', options=[
@@ -803,61 +804,63 @@ def headerRow(title_id, summary_id):
                       html.H4(f'All of The Island: {YEAR_DEFAULT}', id=title_id, className='ri-scope m-0')],
                      fill=True), md=4),
         dbc.Col(card(html.Div(id=summary_id, className='h-100 d-flex align-items-center'), fill=True), md=8),
-    ], className='g-3 mb-3')
+    ], className='g-3 mb-3 ri-header')
 
 
-touchScreen = dbc.Container(fluid=True, className='py-3 ri-page min-vh-100', children=[
+touchScreen = dbc.Container(fluid=True, className='py-3 ri-page ri-fit', children=[
     headerRow('graph_ri', 'executive_sum_text'),
-    dbc.Row(className='g-3', children=[
+    dbc.Row(className='g-3 ri-main', children=[
         # Map: first on phones, second column on wide screens
         dbc.Col(card([
             dbc.Row([dbc.Col(labeled('Scale', scaleDropDownMenu), sm=6),
                      dbc.Col(labeled('Map colour', mapColorDropDownMenu), sm=6)], className='g-2'),
-            graph('map-graph', MAP_HEIGHT),
-        ], fill=True), xs={'size': 12, 'order': 1}, md={'size': 6, 'order': 2}, xl={'size': 3, 'order': 2}),
+            graph('map-graph', 'map'),
+        ], fill=True), xs={'size': 12, 'order': 1}, md={'size': 6, 'order': 2}, lg={'size': 3, 'order': 2}),
         # Analytics
-        dbc.Col([
+        dbc.Col(className='d-flex flex-column gap-3 ri-analytics', children=[
             card(dbc.Row([
                 dbc.Col(labeled('Year', yearSlider('year-slider')), md=8),
                 dbc.Col(labeled('Time series', timeDropDownMenu), md=4),
             ], className='g-2 align-items-end')),
-            html.Div(card(graph('time-graph', TIME_HEIGHT)), className='mt-3'),
-            dbc.Row(className='g-3 mt-0', children=[
-                dbc.Col(card(graph('sunBurst-graph', DETAIL_HEIGHT), fill=True), lg=6),
+            html.Div(card(graph('time-graph', 'time'), fill=True), className='ri-grow'),
+            dbc.Row(className='g-3 ri-grow', children=[
+                dbc.Col(card(graph('sunBurst-graph', 'detail'), fill=True), md=6),
                 dbc.Col(card([labeled('Detail chart', contextualDropMenu),
-                              graph('contextual-graph', DETAIL_HEIGHT)], fill=True), lg=6),
+                              graph('contextual-graph', 'detail')], fill=True), md=6),
             ]),
-        ], xs={'size': 12, 'order': 2}, md={'size': 12, 'order': 3}, xl={'size': 6, 'order': 3}),
+        ], xs={'size': 12, 'order': 2}, md={'size': 12, 'order': 3}, lg={'size': 6, 'order': 3}),
         # 3D scene: last on phones, first column on wide screens
-        dbc.Col(card([labeled('3D view', Menu3d), scene3D('ifame-cell', MAP_HEIGHT)], fill=True),
-                xs={'size': 12, 'order': 3}, md={'size': 6, 'order': 1}, xl={'size': 3, 'order': 1}),
+        dbc.Col(card([labeled('3D view', Menu3d), scene3D('ifame-cell')], fill=True),
+                xs={'size': 12, 'order': 3}, md={'size': 6, 'order': 1}, lg={'size': 3, 'order': 1}),
     ]),
 ])
 
 # Projection pages: mirror the touch screen selection (see shared state below).
-projDash = dbc.Container(fluid=True, className='py-3 ri-page min-vh-100', children=[
+projDash = dbc.Container(fluid=True, className='py-3 ri-page ri-fit', children=[
     headerRow('bldYearProj', 'executiveSumTextProj'),
-    card(yearSlider('yearSliderProj')),
-    html.Div(card(graph('time-graphProjDash', '42vh')), className='mt-3'),
-    dbc.Row(className='g-3 mt-0', children=[
-        dbc.Col(card(graph('sunBurst-graphProjDash', '38vh')), md=6),
-        dbc.Col(card(graph('contextual-graphProDash', '38vh')), md=6),
+    html.Div(className='d-flex flex-column gap-3 ri-main', children=[
+        card(yearSlider('yearSliderProj')),
+        html.Div(card(graph('time-graphProjDash', 'time'), fill=True), className='ri-grow'),
+        dbc.Row(className='g-3 ri-grow', children=[
+            dbc.Col(card(graph('sunBurst-graphProjDash', 'detail'), fill=True), md=6),
+            dbc.Col(card(graph('contextual-graphProDash', 'detail'), fill=True), md=6),
+        ]),
     ]),
     dcc.Store(id='projDash-state'),
     dcc.Interval(id='interval-component_DashProj', interval=1500),
 ])
 
-proj3D = dbc.Container(fluid=True, className='py-3 ri-page min-vh-100', children=[
-    dbc.Row(className='g-3', children=[
-        dbc.Col(card(scene3D('ifame-cellProj3D', '94vh')), md=6),
-        dbc.Col(card(graph('map-graphProj3D', '94vh')), md=6),
+proj3D = dbc.Container(fluid=True, className='py-3 ri-page ri-fit', children=[
+    dbc.Row(className='g-3 ri-main', children=[
+        dbc.Col(card(scene3D('ifame-cellProj3D'), fill=True), md=6),
+        dbc.Col(card(graph('map-graphProj3D', 'map'), fill=True), md=6),
     ]),
     dcc.Store(id='proj3D-state'),
     dcc.Interval(id='interval-component_Dash3D', interval=1500),
 ])
 
-Only3D = html.Div([
-    scene3D('ifame-cellOnly3D', '100vh'),
+Only3D = html.Div(className='ri-only3d', children=[
+    scene3D('ifame-cellOnly3D'),
     dcc.Store(id='only3D-state'),
     dcc.Interval(id='interval_Only3D', interval=1500),
 ])
