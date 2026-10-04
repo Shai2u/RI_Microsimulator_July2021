@@ -1,39 +1,56 @@
+import colorsys
+import re
+from pathlib import Path
+
 import dash
-import dash_core_components as dcc
-import dash_html_components as html
-from dash.dependencies import Input, Output, State
+from dash import dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import geopandas as gpd
 import numpy as np
-import datetime
 import pandas as pd
 import json
 
+DATA_DIR = Path(__file__).resolve().parent / 'assets' / 'legacy_resources'
+HSV_RE = re.compile(r'hsv\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)')
 
-gpd.options.use_pygeos = False
+
+def hsv_to_hex(color):
+    """Convert 'hsv(h,s%,v%)' strings (no longer accepted by Plotly 7) to hex."""
+    match = HSV_RE.fullmatch(str(color).strip())
+    if not match:
+        return color
+    h, s, v = (float(g) for g in match.groups())
+    r, g, b = colorsys.hsv_to_rgb(h / 360, s / 100, v / 100)
+    return '#{:02x}{:02x}{:02x}'.format(round(r * 255), round(g * 255), round(b * 255))
+
+
+def read_colors(file_name):
+    df = pd.read_excel(DATA_DIR / file_name)
+    for col in df.columns[df.columns.str.startswith('colors_')]:
+        df[col] = df[col].map(hsv_to_hex)
+    return df
+
+
 # Inserting Color Labels
-colorIncomeCensusgroup = pd.read_excel(
-    'https://raw.githubusercontent.com/Shai2u/RI_Microsimulator_July2021/main/assets/legacy_resources/colorINcomeCensusGroups.xlsx')  # New April 28
+colorIncomeCensusgroup = read_colors('colorINcomeCensusGroups.xlsx')  # New April 28
 censusIncomeDict = dict(
     zip(colorIncomeCensusgroup['label'], colorIncomeCensusgroup['colors_']))
-group_color_dict = pd.read_excel(
-    'https://raw.githubusercontent.com/Shai2u/RI_Microsimulator_July2021/main/assets/legacy_resources/group_color_jan_7.xlsx')  # read color dictionary
-color_labels = pd.read_excel(
-    'https://raw.githubusercontent.com/Shai2u/RI_Microsimulator_July2021/main/assets/legacy_resources/jan_7_color_labels.xlsx')
+group_color_dict = read_colors('group_color_jan_7.xlsx')  # read color dictionary
+color_labels = read_colors('jan_7_color_labels.xlsx')
 colorDict = dict(zip(color_labels['label'], color_labels['colors_']))
 colorDictMerge = dict(
     zip(group_color_dict['group_name'], group_color_dict['colors_']))
-geoJSONloc = "https://raw.githubusercontent.com/Shai2u/RI_Microsimulator_July2021/main/assets/legacy_resources/rib_feb_11.geojson"
-csvResultsloc = "https://raw.githubusercontent.com/Shai2u/RI_Microsimulator_July2021/main/assets/legacy_resources/result_dec_21_955.csv"
-jsonBldgs = gpd.read_file(geoJSONloc, driver='GeoJSON').to_crs("EPSG:4326")
-resData = pd.read_csv(csvResultsloc)
+geoJSONloc = DATA_DIR / 'rib_feb_11.geojson'
+csvResultsloc = DATA_DIR / 'result_dec_21_955.csv'
+jsonBldgs = gpd.read_file(geoJSONloc).to_crs("EPSG:4326")
+resData = pd.read_csv(csvResultsloc, low_memory=False)
 resData = resData.iloc[:, 1:]
 resData['birth_date'] = pd.to_datetime(resData['birth_date'], errors='coerce')
 resData = resData[resData['birth_date'].notna()].copy()
-resData.loc[:, 'move_in'] = resData.loc[:, 'move_in'].apply(pd.to_datetime)
-resData.loc[:, 'move_out'] = resData.loc[:, 'move_out'].apply(pd.to_datetime)
+resData['move_in'] = pd.to_datetime(resData['move_in'])
+resData['move_out'] = pd.to_datetime(resData['move_out'])
 
 
 incomeSmallCat = group_color_dict[[
@@ -953,7 +970,7 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
     affordableMarket = affordableMarket[['Building Name', 'Affordable Ratio']]
     mapAggData = pd.merge(mapAggData, affordableMarket,
                           on='Building Name', how='left')  # Affordable Ratio
-    mapAggData['Affordable Ratio'].fillna(0, inplace=True)
+    mapAggData['Affordable Ratio'] = mapAggData['Affordable Ratio'].fillna(0)
     # colorDictMerge
     mapModifed = pd.merge(rib_filter, mapAggData, how='right',
                           left_on='Buildings', right_on='Building Name')
@@ -986,8 +1003,8 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
 
         chosenScale = localCoConColorSclae[cat]
         rangeColor_ = rangeColorDict[cat]
-        fig_map = px.choropleth_mapbox(mapModifed, geojson=mapModifed.geometry, locations=mapModifed.index, color=colorCat, color_continuous_scale=chosenScale,
-                                       mapbox_style="carto-positron",
+        fig_map = px.choropleth_map(mapModifed, geojson=mapModifed.geometry, locations=mapModifed.index, color=colorCat, color_continuous_scale=chosenScale,
+                                       map_style="carto-positron",
                                        hover_name='Bldg Proje',
                                        custom_data=['Buildings', 'Group'],
                                        range_color=rangeColor_
@@ -995,14 +1012,14 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
         fig_map.update_traces(colorbar=dict(
             thickness=5, len=0.25, ticks='inside', showticklabels=False))  # ) #marker_showscale=False
     else:
-        fig_map = px.choropleth_mapbox(mapModifed, geojson=mapModifed.geometry, locations=mapModifed.index, color=colorCat, color_discrete_map=discreteMap,
-                                       mapbox_style="carto-positron",
+        fig_map = px.choropleth_map(mapModifed, geojson=mapModifed.geometry, locations=mapModifed.index, color=colorCat, color_discrete_map=discreteMap,
+                                       map_style="carto-positron",
                                        hover_name='Bldg Proje',
                                        custom_data=['Buildings', 'Group']
                                        ).update_traces(showlegend=True)
     mapbox_ = dict(bearing=33, pitch=0, zoom=zoom_,
                    center=dict(lat=lat_, lon=lon_))
-    fig_map.update_layout(autosize=True, height=sim_plot.mapHeight1, width=sim_plot.mapWidth, mapbox=mapbox_, legend=dict(
+    fig_map.update_layout(autosize=True, height=sim_plot.mapHeight1, width=sim_plot.mapWidth, map=mapbox_, legend=dict(
         yanchor="top", y=0.1, xanchor="left", x=0.01, orientation="h"),margin=dict(l=0, r=0, t=0, b=0))
 
     return fig_map
@@ -1758,4 +1775,4 @@ def display_page(pathname):
 
 # Run app and display result inline in the notebook
 if __name__ == '__main__':
-    app.run_server(debug=False)
+    app.run(debug=False)
