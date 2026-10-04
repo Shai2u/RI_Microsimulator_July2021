@@ -25,6 +25,8 @@ Before and after numbers, measured on the same machine under the same conditions
 | Same interaction, seen before | ~1.3 s | **near-instant** (LRU cache) |
 | Page ready in browser (warm) | n/a | ~2.5 s (mostly the external ArcGIS 3D scene) |
 | Each open projection page | recomputed all figures every 1.5 s | recomputes only when the selection changes |
+| Data sent per page load (charts/map) | 217 KB uncompressed | **29 KB** (zstd/gzip, 7.5× smaller) |
+| First visitor after a restart | waits for the opening view to be computed | opening view pre-built at startup |
 
 The optimised code was checked against the previous version: all year snapshots, the 480k-row
 yearly panel and all unit-statistics tables are identical, except for the intended fixes below.
