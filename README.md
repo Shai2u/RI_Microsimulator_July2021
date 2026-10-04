@@ -115,6 +115,8 @@ this app before (see HANDOFF.md).
 
 ## Deployment (Render)
 
+Step-by-step instructions for publishing: **[DEPLOY_RENDER.md](DEPLOY_RENDER.md)**.
+
 `render.yaml` describes the service: `pip install -r requirements.txt`, then
 `gunicorn app:server --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT`.
 Peak memory is about 350–420 MB, which fits the 512 MB instance. Keep **one** worker, because
