@@ -68,16 +68,8 @@ incomeRangeSmall = incomeSmallCat['income max'].values.tolist() + [0]
 incomeLabelSmall = incomeSmallCat.index.tolist()
 incomeRangeSmall.reverse()
 incomeLabelSmall.reverse()
-fontSize = 24
-yearListSlider = {
-    1970: {'label': '1970', 'style': {'font-size': f'{fontSize}px'}},
-    1985: {'label': '1985', 'style': {'font-size': f'{fontSize}px'}},
-    2000: {'label': '2000', 'style': {'font-size': f'{fontSize}px'}},
-    2015: {'label': '2015', 'style': {'font-size': f'{fontSize}px'}},
-    2030: {'label': '2030', 'style': {'font-size': f'{fontSize}px'}},
-    2045: {'label': '2045', 'style': {'font-size': f'{fontSize}px'}},
-    2060: {'label': '2060', 'style': {'font-size': f'{fontSize}px'}},
-}
+YEAR_MIN, YEAR_MAX, YEAR_DEFAULT = 1976, 2080, 2000
+yearListSlider = {year: str(year) for year in range(1980, YEAR_MAX + 1, 20)}
 
 affordColor = color_labels[color_labels['label']
                            == 'Affordable']['colors_'].values[0]
@@ -258,27 +250,22 @@ class incomeClass:
 
 
 class sim_plot:
-    tl_width = 1250*1.5
-    tl_height = 600 *1.2
-    tl_height2 = 600*1.5
-    cont_width = 600*1.5
-    mapWidth = 600
-    mapHeight1 = tl_height2*2-30
-    textSize_ = 24
+    # Figures carry no fixed width/height: they fill their dcc.Graph container.
+    textSize_ = 13
+    margin = dict(l=40, r=20, t=60, b=40)
+
     @staticmethod
     def treeMapBuilding(r, titleText_):
         fig = px.treemap(r, path=['Group', 'Building Name', 'ap_class', 'Door Number'],
                          color='income', color_continuous_scale='oranges', title=titleText_)
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50),
-                          width=sim_plot.cont_width, height=sim_plot.tl_height,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
 
         return fig
 
     def treeMapIsland(r, titleText_):
         fig = px.treemap(r, path=['Group', 'Building Name', 'ap_class'],
                          color='income', title=titleText_, color_continuous_scale='oranges')
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50),
-                          width=sim_plot.cont_width, height=sim_plot.tl_height,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
 
         return fig
 
@@ -302,7 +289,7 @@ class sim_plot:
 
         fig = px.bar(r2, x="year", y="Household Agents",
                      color="status", color_discrete_map=leaveColorDict, title=titleText_, template='plotly_white')
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.tl_width, height=sim_plot.tl_height2, legend=dict(
+        fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
         return fig
@@ -318,7 +305,7 @@ class sim_plot:
 
         fig = px.line(r2, x="year", y=["Mean Age", "Death Age"], title=titleText_,
                       template='plotly_white', labels=dict(value="Age", variable="Legend"))
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.tl_width, height=sim_plot.tl_height2, legend=dict(
+        fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
         return fig
@@ -333,7 +320,7 @@ class sim_plot:
 
         fig = px.line(r2, x="year", y="Household Agents",
                       color="Age Group", color_discrete_map=colorDict, title=titleText_, template='plotly_white')
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.tl_width, height=sim_plot.tl_height2, legend=dict(
+        fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=1.05, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
         return fig
@@ -349,7 +336,7 @@ class sim_plot:
         fig = px.line(r2, x="year", y="Household Agents", color="Income Group",
                       color_discrete_map=colorDict, title=titleText_, template='plotly_white')
 
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.tl_width, height=sim_plot.tl_height2, legend=dict(
+        fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
         return fig
@@ -365,7 +352,7 @@ class sim_plot:
 
         fig = px.line(r2, x="year", y=["Mean Income", "Man Annual Exprense"], title=titleText_,
                       template='ggplot2', labels=dict(value="US Dollars", variable="Expenses"))
-        fig.update_layout(margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.tl_width, height=sim_plot.tl_height2, legend=dict(
+        fig.update_layout(margin=sim_plot.margin, legend=dict(
             yanchor="top", y=0.9, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",font=dict(size=sim_plot.textSize_))
 
         return fig
@@ -377,7 +364,7 @@ class sim_plot:
         title_ = str(year_)+' '+titleText_ + ' Age Groups'
         fig = px.bar(r2, x='Age Group', y='Households', template='plotly_white', title=title_, color='Age Group',
                      color_discrete_map=colorDict, category_orders={'Age Group': ['18-44', '45-64', '65-84', '85+']})
-        fig.update_layout(showlegend=False, margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.cont_width, height=sim_plot.tl_height,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
         return fig
 
     @staticmethod
@@ -387,7 +374,7 @@ class sim_plot:
         title_ = str(year_)+' '+titleText_ + ' Income Groups'
         fig = px.bar(r2, x='Income Group', y='Households', template='plotly_white', title=title_, color='Income Group',
                      color_discrete_map=colorDict, category_orders={'Income Group': ['Low', 'Moderate', 'Middle', 'Upper']})
-        fig.update_layout(showlegend=False, margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.cont_width, height=sim_plot.tl_height,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
         return fig
 
     @staticmethod
@@ -399,7 +386,7 @@ class sim_plot:
         title_ = str(year_)+' '+titleText_ + ' Income Group Census Categories'
         fig = px.bar(r2, x='Income Group Census Categories', y='Households', template='plotly_white', title=title_,
                      color='Income Group Census Categories', color_discrete_map=censusIncomeDict, category_orders={'Income Group Census Categories': catIncome})
-        fig.update_layout(showlegend=False, margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.cont_width, height=sim_plot.tl_height,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
         return fig
 
     @staticmethod
@@ -413,7 +400,7 @@ class sim_plot:
                          size="count", color="group_name", color_discrete_map=colorDictMerge, facet_col='Ap Type', title=title_, size_max=30,
                          category_orders={"Age Group": ["18-44", "45-64", "65-84", "85+"],
                                           "Income": ['Upper', 'Middle', 'Moderate', 'Low']}, template='ggplot2')
-        fig.update_layout(showlegend=False, margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.cont_width, height=sim_plot.tl_height,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(showlegend=False, margin=sim_plot.margin,font=dict(size=sim_plot.textSize_))
 
         return fig
 
@@ -429,8 +416,8 @@ class sim_plot:
         colorLabels = tuple(colorDict_[item] for item in labels_text)
         fig.data[0].marker.colors = colorLabels
         fig.update_traces(textinfo="label+percent entry")
-        fig.update_layout(showlegend=False, margin=dict(l=50, r=50, t=100, b=50), legend=dict(
-            yanchor="top", y=1, xanchor="left", x=1, orientation="h"), width=sim_plot.cont_width, height=sim_plot.tl_height+50,font=dict(size=sim_plot.textSize_))
+        fig.update_layout(showlegend=False, margin=sim_plot.margin, legend=dict(
+            yanchor="top", y=1, xanchor="left", x=1, orientation="h"),font=dict(size=sim_plot.textSize_))
         return fig
 
     @staticmethod
@@ -484,7 +471,7 @@ class sim_plot:
 
         # Overlay both histograms
         histogramFig.update_layout(barmode='overlay', title=f'Tenant Cycles {year_} {title_}', template='plotly_white', legend=dict(
-            yanchor="top", y=0.85, xanchor="left", x=0.01, orientation="h"), margin=dict(l=50, r=50, t=100, b=50), width=sim_plot.cont_width, height=sim_plot.tl_height)
+            yanchor="top", y=0.85, xanchor="left", x=0.01, orientation="h"), margin=sim_plot.margin)
         # Reduce opacity to see both histograms
         histogramFig.update_traces(opacity=0.75)
         return histogramFig
@@ -597,8 +584,8 @@ def affordabilityTimeSeriesAgregattedGraph(aw, mC, aC, title_):
                      linecolor='rgb(150,150,150)', title='Year')
     fig.update_yaxes(range=[0, maxY], showline=True,
                      linecolor='rgb(150,150,150)', title='Households')
-    fig.update_layout(width=sim_plot.tl_width, height=sim_plot.tl_height2, plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=0.97, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
-                      margin=dict(l=50, r=50, t=100, b=50), title=bldgsGroupTitle + " Market and Affordable Units Time Series",font=dict(size=sim_plot.textSize_))
+    fig.update_layout(plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=0.97, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
+                      margin=sim_plot.margin, title=bldgsGroupTitle + " Market and Affordable Units Time Series",font=dict(size=sim_plot.textSize_))
     return fig
 
 
@@ -608,8 +595,8 @@ def baseFigForAffordableTS(title_, ymax, yloc):
                      linecolor='rgb(150,150,150)', title='Year')
     fig.update_yaxes(range=[0, ymax], showline=True,
                      linecolor='rgb(150,150,150)', title='Households')
-    fig.update_layout(width=sim_plot.tl_width, height=sim_plot.tl_height2, plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=yloc, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
-                     margin=dict(l=50, r=50, t=100, b=50), title=title_ + " Market and Affordable Units Time Series",font=dict(size=sim_plot.textSize_))
+    fig.update_layout(plot_bgcolor='rgba(255,255,255,0)', legend=dict(yanchor="top", y=yloc, xanchor="left", x=0.01, orientation="h"), hoverlabel_align="auto", hovermode="x unified",
+                     margin=sim_plot.margin, title=title_ + " Market and Affordable Units Time Series",font=dict(size=sim_plot.textSize_))
     return fig
 
 
@@ -794,253 +781,159 @@ def updateMapYear1(value_, rMap, r, cat='aib', zoomto='All of The Island'):
                                        ).update_traces(showlegend=True)
     mapbox_ = dict(bearing=33, pitch=0, zoom=zoom_,
                    center=dict(lat=lat_, lon=lon_))
-    fig_map.update_layout(autosize=True, height=sim_plot.mapHeight1, width=sim_plot.mapWidth, map=mapbox_, legend=dict(
+    fig_map.update_layout(map=mapbox_, legend=dict(
         yanchor="top", y=0.1, xanchor="left", x=0.01, orientation="h"),margin=dict(l=0, r=0, t=0, b=0))
 
     return fig_map
 
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP],
+                title='Roosevelt Island Microsimulator',
+                meta_tags=[{'name': 'viewport', 'content': 'width=device-width, initial-scale=1'}])
 server = app.server
 
-valYear = 2000
-figAll = affordabilityTimeSeriesAgregattedGraph(
-    aw=AllAffordable[AllAffordable['year'] <= valYear], mC=marketColor, aC=affordColor, title_='All of the Island')
-
-cellTimeFigure = dcc.Graph(id='time-graph', figure=figAll)
-cellTimeFigureProjDash = dcc.Graph(id='time-graphProjDash', figure=figAll)
-currentData = resultsAll1.getAffordableMarketPerYear3(valYear)
-figSunBurst = sim_plot.sunburstGroupsAffordMarketYearColor3(
-    currentData, valYear)
-
-bubbleFig_ = sim_plot.bubbleAgeIncomeClass(currentData, valYear, 'All')
-fig_map = updateMapYear1(valYear, rib.copy(), currentData,
-                         'age', zoomto='All of The Island')
-mapColorDropDownMenu = dcc.Dropdown(id='mapcolor-menu',
-                                    options=[
-                                        {'label': 'Age/Income', 'value': 'aib'},
-                                        {'label': 'Income Groups',
-                                            'value': 'income'},
-                                        {'label': 'Mean Income ($)',
-                                         'value': 'meanIncome'},
-                                        {'label': 'Age Groups', 'value': 'age'},
-                                        {'label': 'Mean Age', 'value': 'meanAge'},
-                                        {'label': 'Apartment Cycles',
-                                            'value': 'cycle'},
-                                        {'label': 'Apartment Numbers',
-                                            'value': 'apNum'},
-                                        {'label': 'Affordable Percent',
-                                            'value': 'afPercent'}
-                                    ],
-                                    value='aib'
-                                    )
-timeDropDownMenu = dcc.Dropdown(id='time-menu',
-                                options=[
-                                    {'label': 'Affordable Market', 'value': 'am'},
-                                    {'label': 'Leaving', 'value': 'leave'},
-                                    {'label': 'Life Expectancy', 'value': 'life'},
-                                    {'label': 'Income Expenses', 'value': 'ie'},
-                                    {'label': 'Age Groups', 'value': 'ageg'},
-                                    {'label': 'Income Groups', 'value': 'ig'},
-                                ],
-                                value='am'
-                                )
-col1 = dbc.Card(
-    [
-        dcc.Dropdown(
-            id='scale-observation',
-            options=[
-                {'label': 'Induvidual Building', 'value': 'ind'},
-                {'label': 'Wire All Buildings', 'value': 'wireb'},
-                {'label': 'Wire', 'value': 'wire'},
-                {'label': 'South/North Town', 'value': 'NotWire'},
-                {'label': 'All of the Island', 'value': 'ri'}
-            ],
-            value='ri'
-        ), mapColorDropDownMenu, dcc.Graph(id='map-graph', figure=fig_map)
-    ],
-    body=True
-)
-Menu3d = dcc.Dropdown(
-    id='menu3D',
-    options=[
-        {'label': '3D Not Updated', 'value': 'No3D'},
-        {'label': '3D Updated', 'value': 'Yes3D'},
-    ],
-    value='No3D'
-)
-
-contextualDropMenu = dcc.Dropdown(id='contextual-menu',
-                                  options=[
-                                      {'label': 'Age Income Bubbles',
-                                          'value': 'aib'},
-                                      {'label': 'Income Groups',
-                                          'value': 'income'},
-                                      {'label': 'Income Groups Census Categories',
-                                          'value': 'incomeCensus'},
-                                      {'label': 'Age Groups', 'value': 'age'},
-                                      {'label': 'Apartment Cycles',
-                                          'value': 'cycle'},
-                                      {'label': 'Induvidual Apartments',
-                                          'value': 'treemap'}
-                                  ],
-                                  value='aib'
-                                  )
+# ---------------------------------------------------------------------------
+# Layout. Bootstrap grid: three columns on wide screens, two on tablets,
+# stacked on phones. Graphs are filled by the callbacks on first load.
+# ---------------------------------------------------------------------------
+GRAPH_CONFIG = {'displaylogo': False, 'responsive': True}
+MAP_HEIGHT = 'clamp(380px, 72vh, 950px)'
+TIME_HEIGHT = 'clamp(300px, 40vh, 560px)'
+DETAIL_HEIGHT = 'clamp(300px, 38vh, 520px)'
 
 
-contextualCard = dbc.Card([contextualDropMenu, dcc.Graph(
-    id='contextual-graph', figure=bubbleFig_)])
-
-contextualCardProjDash = dbc.Card( dcc.Graph(
-    id='contextual-graphProDash', figure=bubbleFig_))
+def graph(id_, height):
+    return dcc.Graph(id=id_, config=GRAPH_CONFIG, style={'height': height})
 
 
-sunBurstFigure = dbc.Card([dcc.Graph(id='sunBurst-graph', figure=figSunBurst)])
+def labeled(label, control):
+    return html.Div([dbc.Label(label, className='small text-muted mb-1'), control], className='mb-2')
 
-sunBurstFigureProjDash = dbc.Card(
-    [dcc.Graph(id='sunBurst-graphProjDash', figure=figSunBurst)])
 
-touchScreen = html.Div([
-                        html.Table(
-    [
-        html.Tr([
-                html.Td([html.Div(dbc.Card(html.H3(id="graph_ri"),
-                                           style={'text-align': 'center'}, body=True))]),
-                html.Td([html.Div(dbc.Card(html.H3(["Household in scope: Mean Age: Mean Income:"],
-                                                   id="executive_sum_text"), style={'text-align': 'center'}, body=True))], colSpan='3')
-                # html.Td([dbc.Card(dbc.CardBody([dcc.Input(id='figure_text', value='Figures', type='text'), html.Button('Download Figures', id='downloadB')])
-                #                   )], style={'text-align': 'right'})
+def card(children, fill=False, **kwargs):
+    """fill=True stretches the card to its row height (for side-by-side cards)."""
+    return dbc.Card(dbc.CardBody(children, className='p-2'),
+                    className='shadow-sm' + (' h-100' if fill else ''), **kwargs)
 
-                ]),
-        html.Tr(
-            [
-                html.Td(
-                    [
-                        dbc.Card([Menu3d, (html.Iframe(id='ifame-cell', height=f"{sim_plot.mapHeight1+40}px", width=f"{sim_plot.mapWidth}px",
-                                                       src=SCENE_3D_URL))], body=True)
-                    ], rowSpan='3'),
-                html.Td([col1], rowSpan='3', style={
-                    'border-style': 'solid', 'border-width': '0px', 'width': '400px'}),
-                html.Td([dbc.Card(dbc.CardBody([
-                        html.Div(dbc.Card(
-                            dcc.Slider(id='year-slider', min=1976, max=2080, step=1, marks=yearListSlider, value=2000), style={"height": "100%"}, body=True),
-                            #
-                            style={'width': '74.5%','height':'100px', 'display': 'inline-block'}),
-                        html.Div(dbc.Card(timeDropDownMenu, style={"height": "100%"}, body=True), style={
-                                 'width': '24.5%', 'display': 'inline-block', 'vertical-align': 'top'})
 
-                        ]))], colSpan='2', style={'border-style': 'solid', 'border-width': '0px'})
-            ]
-        ),
-        html.Tr(
-            [
-                html.Td(dbc.Card(dbc.Card([cellTimeFigure]), body=True), colSpan='2', style={
-                    'border-style': 'solid', 'border-width': '0px'})
+def scene3D(id_, height):
+    return html.Iframe(id=id_, src=SCENE_3D_URL, title='3D model of Roosevelt Island',
+                       style={'width': '100%', 'height': height, 'border': 0})
 
-            ]
-        ),
-        html.Tr(
-            [
-                html.Td(dbc.Card(sunBurstFigure, body=True), style={
-                    'border-style': 'solid', 'border-width': '0px'}),
-                html.Td(dbc.Card(contextualCard, body=True), style={
-                    'border-style': 'solid', 'border-width': '0px'})
 
-            ]
-        )
-    ],
-    style={'border-collapse': 'collapse',
-           'border-spacing': '0', 'width': '100%','font-size':'24px'}
-)
-
+scaleDropDownMenu = dcc.Dropdown(id='scale-observation', clearable=False, value='ri', options=[
+    {'label': 'Individual Building (click map)', 'value': 'ind'},
+    {'label': 'Wire All Buildings', 'value': 'wireb'},
+    {'label': 'Wire', 'value': 'wire'},
+    {'label': 'South/North Town', 'value': 'NotWire'},
+    {'label': 'All of the Island', 'value': 'ri'},
+])
+mapColorDropDownMenu = dcc.Dropdown(id='mapcolor-menu', clearable=False, value='aib', options=[
+    {'label': 'Age/Income', 'value': 'aib'},
+    {'label': 'Income Groups', 'value': 'income'},
+    {'label': 'Mean Income ($)', 'value': 'meanIncome'},
+    {'label': 'Age Groups', 'value': 'age'},
+    {'label': 'Mean Age', 'value': 'meanAge'},
+    {'label': 'Apartment Cycles', 'value': 'cycle'},
+    {'label': 'Apartment Numbers', 'value': 'apNum'},
+    {'label': 'Affordable Percent', 'value': 'afPercent'},
+])
+timeDropDownMenu = dcc.Dropdown(id='time-menu', clearable=False, value='am', options=[
+    {'label': 'Affordable Market', 'value': 'am'},
+    {'label': 'Leaving', 'value': 'leave'},
+    {'label': 'Life Expectancy', 'value': 'life'},
+    {'label': 'Income Expenses', 'value': 'ie'},
+    {'label': 'Age Groups', 'value': 'ageg'},
+    {'label': 'Income Groups', 'value': 'ig'},
+])
+contextualDropMenu = dcc.Dropdown(id='contextual-menu', clearable=False, value='aib', options=[
+    {'label': 'Age Income Bubbles', 'value': 'aib'},
+    {'label': 'Income Groups', 'value': 'income'},
+    {'label': 'Income Groups Census Categories', 'value': 'incomeCensus'},
+    {'label': 'Age Groups', 'value': 'age'},
+    {'label': 'Apartment Cycles', 'value': 'cycle'},
+    {'label': 'Individual Apartments', 'value': 'treemap'},
+])
+Menu3d = dcc.Dropdown(id='menu3D', clearable=False, value='No3D', options=[
+    {'label': '3D Not Updated', 'value': 'No3D'},
+    {'label': '3D Follows Selection', 'value': 'Yes3D'},
 ])
 
-projDash = html.Div([
-    html.Table(
-        [
-            html.Tr([
-                html.Td([html.Div(dbc.Card(html.H5(['All of the Island:'], id="bldYearProj"),
-                                           style={'text-align': 'center'}, body=True))]),
-                html.Td([html.Div(dbc.Card(html.H6(["In Score - Buidlings:0, HH:0, Tenant Cycles:0, Mean  Age:0, Mean Income:0"],
-                                                   id="executiveSumTextProj"), style={'text-align': 'center'}, body=True))])
 
+def yearSlider(id_):
+    return dcc.Slider(id=id_, min=YEAR_MIN, max=YEAR_MAX, step=1, value=YEAR_DEFAULT, marks=yearListSlider,
+                      tooltip={'placement': 'bottom', 'always_visible': False})
+
+
+def headerRow(title_id, summary_id):
+    return dbc.Row([
+        dbc.Col(card(html.H5(f'All of The Island: {YEAR_DEFAULT}', id=title_id, className='m-0'),
+                     fill=True, style={'textAlign': 'center'}), md=4),
+        dbc.Col(card(html.Div(id=summary_id, className='small'), fill=True, style={'textAlign': 'center'}), md=8),
+    ], className='g-2 mb-2')
+
+
+touchScreen = dbc.Container(fluid=True, className='py-2', children=[
+    headerRow('graph_ri', 'executive_sum_text'),
+    dbc.Row(className='g-2', children=[
+        # Map: first on phones, second column on wide screens
+        dbc.Col(card([
+            dbc.Row([dbc.Col(labeled('Scale', scaleDropDownMenu), sm=6),
+                     dbc.Col(labeled('Map colour', mapColorDropDownMenu), sm=6)], className='g-2'),
+            graph('map-graph', MAP_HEIGHT),
+        ], fill=True), xs={'size': 12, 'order': 1}, md={'size': 6, 'order': 2}, xl={'size': 3, 'order': 2}),
+        # Analytics
+        dbc.Col([
+            card(dbc.Row([
+                dbc.Col(labeled('Year', yearSlider('year-slider')), md=8),
+                dbc.Col(labeled('Time series', timeDropDownMenu), md=4),
+            ], className='g-2 align-items-end')),
+            html.Div(card(graph('time-graph', TIME_HEIGHT)), className='mt-2'),
+            dbc.Row(className='g-2 mt-0', children=[
+                dbc.Col(card(graph('sunBurst-graph', DETAIL_HEIGHT), fill=True), lg=6),
+                dbc.Col(card([labeled('Detail chart', contextualDropMenu),
+                              graph('contextual-graph', DETAIL_HEIGHT)], fill=True), lg=6),
             ]),
-            html.Tr(
-                [
-                    html.Td([dbc.Card(dbc.CardBody([
-                        html.Div(dbc.Card(
-                            dcc.Slider(id='yearSliderProj', min=1976, max=2080, step=1, marks=yearListSlider, value=2000), style={"height": "100%"}, body=True),
-                            style={'width': '100%'})
-                    ]))], colSpan='2', style={'border-style': 'solid', 'border-width': '0px'})
-                ]
-            ),
-            html.Tr(
-                [
-                    html.Td(dbc.Card(dbc.Card([cellTimeFigureProjDash]), body=True), colSpan='2', style={
-                        'border-style': 'solid', 'border-width': '0px'})
-                ]
-            ),
-            html.Tr(
-                [
-                    html.Td(dbc.Card(sunBurstFigureProjDash, body=True), style={
-                            'border-style': 'solid', 'border-width': '0px'}),
-                    html.Td(dbc.Card(contextualCardProjDash, body=True), style={
-                            'border-style': 'solid', 'border-width': '0px'})
+        ], xs={'size': 12, 'order': 2}, md={'size': 12, 'order': 3}, xl={'size': 6, 'order': 3}),
+        # 3D scene: last on phones, first column on wide screens
+        dbc.Col(card([labeled('3D view', Menu3d), scene3D('ifame-cell', MAP_HEIGHT)], fill=True),
+                xs={'size': 12, 'order': 3}, md={'size': 6, 'order': 1}, xl={'size': 3, 'order': 1}),
+    ]),
+])
 
-                ]
-            )
-
-        ],
-        style={'border-collapse': 'collapse',
-               'border-spacing': '0', 'width': '100%'}
-
-    ),
+# Projection pages: mirror the touch screen selection (see shared state below).
+projDash = dbc.Container(fluid=True, className='py-2', children=[
+    headerRow('bldYearProj', 'executiveSumTextProj'),
+    card(yearSlider('yearSliderProj')),
+    html.Div(card(graph('time-graphProjDash', '42vh')), className='mt-2'),
+    dbc.Row(className='g-2 mt-0', children=[
+        dbc.Col(card(graph('sunBurst-graphProjDash', '38vh')), md=6),
+        dbc.Col(card(graph('contextual-graphProDash', '38vh')), md=6),
+    ]),
     dcc.Store(id='projDash-state'),
-    dcc.Interval(
-        id='interval-component_DashProj',
-        interval=1*1500,  # in milliseconds
-        n_intervals=0
-    )
-
+    dcc.Interval(id='interval-component_DashProj', interval=1500),
 ])
 
-proj3D = html.Div([html.Table(
-    [
-        html.Tr(
-            [
-                html.Td(
-                    [
-                        dbc.Card([(html.Iframe(id='ifame-cellProj3D', height="1080px", width="580px",
-                                               src=SCENE_3D_URL))], body=True)
-                    ]),
-                html.Td([dbc.Card(dcc.Graph(id='map-graphProj3D', figure=fig_map), body=True)], style={
-                    'border-style': 'solid', 'border-width': '0px', "height":"1080px", 'width': '580px'}),
-            ]
-        ), dcc.Store(id='proj3D-state'), dcc.Interval(
-            id='interval-component_Dash3D',
-            interval=1*1500,  # in milliseconds
-            n_intervals=0
-        )
-    ],
-    style={'border-collapse': 'collapse',
-           'border-spacing': '0', 'width': '100%'}
-)
+proj3D = dbc.Container(fluid=True, className='py-2', children=[
+    dbc.Row(className='g-2', children=[
+        dbc.Col(card(scene3D('ifame-cellProj3D', '94vh')), md=6),
+        dbc.Col(card(graph('map-graphProj3D', '94vh')), md=6),
+    ]),
+    dcc.Store(id='proj3D-state'),
+    dcc.Interval(id='interval-component_Dash3D', interval=1500),
 ])
 
-Only3D = html.Div([dcc.Store(id='only3D-state'), html.Iframe(id='ifame-cellOnly3D', height="1200px", width="3500px",
-                                              src=SCENE_3D_URL),dcc.Interval(
-            id='interval_Only3D',
-            interval=1*1500,  # in milliseconds
-            n_intervals=0)
-    ],style={'border-collapse': 'collapse',
-          'border-spacing': '0', 'width': '100%'})
+Only3D = html.Div([
+    scene3D('ifame-cellOnly3D', '100vh'),
+    dcc.Store(id='only3D-state'),
+    dcc.Interval(id='interval_Only3D', interval=1500),
+])
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
-    html.Div(id='page-content')
-
-
+    html.Div(id='page-content'),
 ])
+
 
 
 
@@ -1048,7 +941,6 @@ app.layout = html.Div([
 # Input validation: every value arriving from the browser is checked against
 # a known list before it is used, so crafted requests cannot inject anything.
 # ---------------------------------------------------------------------------
-YEAR_MIN, YEAR_MAX, YEAR_DEFAULT = 1976, 2080, 2000
 RESOLUTIONS = ('ind', 'wireb', 'wire', 'NotWire', 'ri')
 CONTEXTS = ('aib', 'income', 'incomeCensus', 'age', 'cycle', 'treemap')
 TIME_CATEGORIES = ('am', 'leave', 'life', 'ie', 'ageg', 'ig')
